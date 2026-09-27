@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script id="gpt6-luna-shim">
+/* gpt-6-luna: modelo por defecto con temperatura=1 (actualización sep-2026).
+   Adapta las peticiones a la API de OpenAI para la familia gpt-6:
+   temperature=1, max_tokens -> max_completion_tokens (con margen para razonamiento)
+   y reintento automático si la API rechaza algún parámetro. */
+(function(){
+  var NEW='gpt-6-luna', OLD='gpt-4o-mini';
+  try{
+    if(!localStorage.getItem('__gpt6_luna_mig_v1')){
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i), v=localStorage.getItem(k);
+        if(v===OLD||v==='"'+OLD+'"'){ localStorage.setItem(k, v.replace(OLD,NEW)); continue; }
+        if(v && v.length<20000 && v.charAt(0)==='{' && v.indexOf(OLD)>=0){
+          try{ var o=JSON.parse(v), ch=false;
+            for(var p in o){ if(o[p]===OLD){ o[p]=NEW; ch=true; } }
+            if(ch) localStorage.setItem(k, JSON.stringify(o));
+          }catch(e){}
+        }
+      }
+      localStorage.setItem('__gpt6_luna_mig_v1','1');
+    }
+  }catch(e){}
+  var of=window.fetch; if(!of) return;
+  function adapt(url,b){
+    if(!b || typeof b.model!=='string' || !/^gpt-6/.test(b.model)) return false;
+    b.temperature=1;
+    ['top_p','frequency_penalty','presence_penalty','logit_bias','logprobs','top_logprobs'].forEach(function(p){ delete b[p]; });
+    if(/chat\/completions/.test(url) && b.max_tokens!=null){
+      if(b.max_completion_tokens==null) b.max_completion_tokens=Math.min(128000, (+b.max_tokens||0)+6000);
+      delete b.max_tokens;
+    }
+    return true;
+  }
+  window.fetch=function(input,init){
+    var url=typeof input==='string'?input:(input&&input.url)||'';
+    if(!/api\.openai\.com\/v1\/(chat\/completions|responses)/.test(url) || !init || typeof init.body!=='string') return of.apply(this,arguments);
+    var b; try{ b=JSON.parse(init.body); }catch(e){ return of.apply(this,arguments); }
+    if(!adapt(url,b)) return of.apply(this,arguments);
+    var self=this, tries=0;
+    function go(){
+      var ini=Object.assign({},init,{body:JSON.stringify(b)});
+      return of.call(self,input,ini).then(function(r){
+        if(r.status!==400 || tries>=3) return r;
+        return r.clone().json().then(function(j){
+          var err=(j&&j.error)||{}, p=err.param, msg=String(err.message||'');
+          if(!p){ var m=msg.match(/'([a-z_]+)'/); if(m) p=m[1]; }
+          if(p && b.hasOwnProperty(p) && /unsupported|not supported|does not support|only the default/i.test(msg)){
+            delete b[p]; tries++; return go();
+          }
+          return r;
+        },function(){ return r; });
+      });
+    }
+    return go();
+  };
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FronterIA · Investigación autónoma al estilo ScientistTwo</title>
+<meta name="description" content="Agentes de IA que investigan de forma autónoma: limitaciones, ideas con novedad contrastada, experimentos reales en el navegador, ablaciones, artículo, revisión, réplica y metarrevisión. Inspirada en ScientistTwo (arXiv:2609.19644).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tinta:#0F2237; --acero:#2E4B6B; --acero-claro:#7C93AC; --gris:#5D7691;
+  --papel:#F3F6FA; --blanco:#FFFFFF; --linea:#D8E0E9; --linea-2:#E8EEF4;
+  --brasa:#E4572E; --brasa-osc:#C9441F; --brasa-suave:#FDEBE4;
+  --forjado:#0E7C6B; --forjado-suave:#E0F3EE; --aviso:#8A3617;
+  --c-ctx:#1F6FB2; --c-comp:#6B4FD8; --c-rda:#0E8C7A; --c-tema:#C98200; --c-eval:#E4572E; --c-final:#2E4B6B;
+  --sombra:0 1px 0 rgba(15,34,55,.05), 0 14px 34px -22px rgba(15,34,55,.45);
+  --sombra-alta:0 2px 0 rgba(15,34,55,.04), 0 22px 50px -24px rgba(15,34,55,.55);
+  --r:14px;
+  --display:"Bricolage Grotesque",Georgia,serif;
+  --texto:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--papel);color:var(--tinta);font-family:var(--texto);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;padding-bottom:84px}
+a{color:var(--acero)}
+:focus-visible{outline:3px solid var(--brasa);outline-offset:2px;border-radius:6px}
+.hidden{display:none!important}
+svg.i{width:1.15em;height:1.15em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+code{font-family:var(--mono);font-size:.85em;background:var(--linea-2);padding:1px 5px;border-radius:5px}
+
+/* Barra superior */
+.topbar{position:sticky;top:0;z-index:40;background:var(--tinta);color:#EAF1F7;box-shadow:0 6px 24px -14px rgba(0,0,0,.6)}
+.tb-in{max-width:1180px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px}
+.logo{background:none;border:0;color:#fff;font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:-.03em;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:8px}
+.logo em{font-style:normal;color:var(--brasa)}
+.logo .anv{width:30px;height:30px;border-radius:9px;background:var(--brasa);display:grid;place-items:center;color:#fff}
+.stepper{flex:1;display:flex;align-items:center;justify-content:center;min-width:0}
+.sdot{display:flex;align-items:center;gap:7px;background:none;border:0;color:#8FA7BE;font:600 13px var(--texto);padding:6px;cursor:pointer;border-radius:10px;white-space:nowrap}
+.sdot:disabled{cursor:not-allowed;opacity:.45}
+.sdot .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:2px solid #3E5C7D;font-size:12px;color:#A9C0D4;transition:all .2s}
+.sdot .n svg{width:14px;height:14px}
+.sdot[data-state="done"] .n{background:var(--forjado);border-color:var(--forjado);color:#fff}
+.sdot[data-state="now"]{color:#fff}
+.sdot[data-state="now"] .n{background:var(--brasa);border-color:var(--brasa);color:#fff;box-shadow:0 0 0 4px rgba(228,87,46,.25)}
+.sdot:not(:disabled):hover{background:rgba(255,255,255,.06)}
+.sline{flex:0 1 26px;height:2px;background:#2F4A68;min-width:6px}
+.sline.on{background:var(--forjado)}
+.tb-tools{display:flex;gap:6px}
+.tb-btn{background:transparent;border:1px solid #3E5C7D;color:#C9D8E6;border-radius:9px;padding:6px 10px;font:600 13px var(--texto);cursor:pointer;display:flex;align-items:center;gap:6px}
+.tb-btn:hover{border-color:var(--brasa);color:#fff}
+.progress{height:4px;background:#1E3550}
+.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brasa),#F59E0B);transition:width .4s}
+@media(max-width:960px){.sdot .lbl{display:none}.sdot[data-state="now"] .lbl{display:inline}}
+@media(max-width:720px){
+  .tb-in{flex-wrap:wrap;gap:8px}
+  .stepper{order:3;flex-basis:100%;justify-content:space-between}
+  .sdot[data-state="now"] .lbl{display:none}
+  .tb-btn .lbl{display:none}
+}
+
+/* Pantallas */
+main{max-width:1180px;margin:0 auto;padding:26px 16px 40px}
+.screen{display:none}
+.screen.on{display:block}
+@media(prefers-reduced-motion:no-preference){.screen.on{animation:rise .35s cubic-bezier(.2,.7,.3,1) both}@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}}
+.sh{display:flex;gap:18px;align-items:flex-start;margin:4px 0 22px}
+.sh-ico{width:64px;height:64px;border-radius:18px;background:var(--c,var(--brasa));color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 12px 24px -14px var(--c,var(--brasa))}
+.sh-ico svg{width:32px;height:32px}
+.sh-step{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--acero-claro);margin:4px 0}
+.sh h2{font-family:var(--display);font-weight:800;font-size:clamp(26px,3.6vw,38px);letter-spacing:-.025em;line-height:1.05;margin:0 0 6px}
+.sh-lede{margin:0;color:var(--gris);font-size:16.5px;max-width:70ch}
+@media(max-width:600px){.sh-ico{width:48px;height:48px;border-radius:14px}.sh-ico svg{width:24px;height:24px}}
+
+.card{background:var(--blanco);border:1px solid var(--linea);border-radius:var(--r);box-shadow:var(--sombra);padding:20px;margin-bottom:18px}
+.card h3{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0 0 4px;display:flex;align-items:center;gap:9px}
+.card h3 .num{width:26px;height:26px;border-radius:8px;background:var(--tinta);color:#fff;font:700 13px var(--mono);display:grid;place-items:center}
+.card .sub{margin:0 0 14px;color:var(--gris);font-size:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:20px;align-items:start}
+.sticky{position:sticky;top:96px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}.sticky{position:static}}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+
+label,.lab{display:block;font-size:13.5px;font-weight:600;margin:0 0 6px;color:var(--acero)}
+label small,.lab small{font-weight:500;color:var(--acero-claro)}
+input[type=text],input[type=password],input[type=number],textarea,select{width:100%;padding:11px 13px;border:1.5px solid var(--linea);border-radius:10px;font-family:var(--texto);font-size:15px;color:var(--tinta);background:#fff;transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acero-claro);box-shadow:0 0 0 4px rgba(124,147,172,.18)}
+input.bad{border-color:var(--brasa);box-shadow:0 0 0 4px rgba(228,87,46,.15)}
+textarea{resize:vertical;min-height:96px;line-height:1.5}
+input::placeholder,textarea::placeholder{color:#9DB0C2}
+.field{margin-bottom:16px}
+.help{font-size:12.8px;color:var(--gris);margin:6px 0 0}
+.help b{color:var(--acero)}
+
+button{font-family:var(--texto);cursor:pointer}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;font-weight:600;font-size:15px;border:1.5px solid transparent;padding:11px 18px;transition:transform .08s,background .15s,border-color .15s;text-decoration:none;line-height:1.2}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--brasa);color:#fff;box-shadow:0 8px 18px -10px var(--brasa)}
+.btn-primary:hover{background:var(--brasa-osc)}
+.btn-big{font-size:17px;padding:14px 24px;border-radius:13px}
+.btn-dark{background:var(--tinta);color:#fff}
+.btn-dark:hover{background:#1c3656}
+.btn-ghost{background:#fff;border-color:var(--linea);color:var(--acero)}
+.btn-ghost:hover{border-color:var(--acero-claro);background:#F7FAFC}
+.btn-ok{background:var(--forjado);color:#fff}
+.btn-ok:hover{background:#0b6457}
+.btn-word{background:#2B579A;color:#fff}
+.btn-word:hover{background:#1e3f7a}
+.btn-sm{padding:7px 12px;font-size:13.5px;border-radius:9px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:#fff;border:1.5px solid var(--linea);border-radius:999px;padding:7px 13px;font-size:13.5px;color:var(--acero);cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.25;text-align:left}
+.chip:hover{border-color:var(--brasa);color:var(--brasa)}
+.chip[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:#fff}
+.chip.mini-ex{font-size:12.5px;padding:4px 10px;border-style:dashed}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1.5px solid var(--linea);background:#fff;border-radius:9px;padding:7px 11px;font-size:13.5px;font-weight:600;color:var(--acero)}
+.seg button:hover{border-color:var(--acero-claro)}
+.seg button[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:#fff}
+
+.meto{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.meto button{text-align:left;background:#fff;border:1.5px solid var(--linea);border-radius:12px;padding:10px 12px;color:var(--tinta)}
+.meto button b{display:block;font-size:14px}
+.meto button span{display:block;font-size:12.3px;color:var(--gris);line-height:1.35;margin-top:2px}
+.meto button:hover{border-color:var(--acero-claro)}
+.meto button[aria-pressed="true"]{border-color:var(--tinta);box-shadow:0 0 0 2px var(--tinta);background:var(--papel)}
+
+.tip{display:flex;gap:12px;background:#FFF8E6;border:1px solid #F3DDA0;border-radius:12px;padding:13px 15px;font-size:14px;color:#6B4E00;margin-bottom:18px}
+.tip svg{width:22px;height:22px;color:#C98200;flex:none;margin-top:1px}
+.tip strong{color:#523B00}
+.aviso{background:var(--brasa-suave);border:1px solid #F3C7B5;border-radius:12px;padding:13px 15px;font-size:14px;color:var(--aviso);margin-bottom:16px}
+.okbox{background:var(--forjado-suave);border:1px solid #A9DCCF;border-radius:12px;padding:13px 15px;font-size:14px;color:#0B5A4E;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+/* Inicio */
+.hero{background:var(--tinta);color:#EAF1F7;border-radius:22px;padding:40px 36px;position:relative;overflow:hidden;margin-bottom:26px;box-shadow:var(--sombra-alta)}
+.hero::before{content:"";position:absolute;right:-80px;top:-80px;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,rgba(228,87,46,.55),transparent 65%)}
+.hero::after{content:"";position:absolute;left:30%;bottom:-140px;width:420px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(14,140,122,.35),transparent 65%)}
+.hero>*{position:relative;z-index:1}
+@media(max-width:600px){.hero{padding:28px 20px;border-radius:18px}}
+.eyebrow{font:600 11.5px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:#8FA7BE;margin:0 0 14px}
+.hero h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,5.4vw,58px);line-height:.98;letter-spacing:-.035em;margin:0 0 16px;max-width:17ch}
+.hero h1 em{font-style:normal;color:var(--brasa)}
+.hero p.lede{max-width:62ch;font-size:18px;color:#C3D3E2;margin:0 0 24px}
+.hero .actions .btn-ghost{background:transparent;color:#fff;border-color:#4A6787}
+.hero .actions .btn-ghost:hover{border-color:#fff}
+.draft{margin-top:18px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:14.5px}
+.sec-title{font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:-.02em;margin:34px 0 6px}
+.sec-sub{color:var(--gris);margin:0 0 16px}
+.journey{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.jstop{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px;position:relative}
+.jstop .ji{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--c);margin-bottom:10px}
+.jstop .ji svg{width:20px;height:20px}
+.jstop b{display:block;font-size:15px;margin-bottom:2px}
+.jstop span{display:block;font-size:13px;color:var(--gris);line-height:1.45}
+.jstop .jn{position:absolute;top:12px;right:14px;font:700 12px var(--mono);color:var(--acero-claro)}
+@media(max-width:900px){.journey{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.journey{grid-template-columns:1fr}}
+
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.part{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--linea);border-radius:12px;padding:12px 14px}
+.part .pi{width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--c);display:grid;place-items:center;flex:none}
+.part b{display:block;font-size:14.5px}
+.part span{display:block;font-size:12.8px;color:var(--gris);line-height:1.4}
+
+.examples{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.excard{background:#fff;border:1px solid var(--linea);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--sombra);position:relative;overflow:hidden;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.excard:hover{transform:translateY(-3px);box-shadow:var(--sombra-alta)}
+.excard::before{content:"";position:absolute;left:0;top:0;right:0;height:5px;background:var(--c)}
+.excard .emo{font-size:32px;line-height:1}
+.excard .area{font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--acero-claro)}
+.excard b{font-family:var(--display);font-size:18px;letter-spacing:-.01em;line-height:1.15}
+.excard p{margin:0;font-size:13.5px;color:var(--gris);flex:1}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:3px 9px;align-self:flex-start}
+
+/* Clave */
+.keyrow{display:flex;gap:8px}
+.keyrow input{flex:1;font-family:var(--mono);font-size:14px}
+.eye{width:46px;flex:none;border:1.5px solid var(--linea);background:#fff;border-radius:10px;color:var(--acero);display:grid;place-items:center}
+.light{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--papel);margin-top:14px;font-size:14.5px;font-weight:600}
+.light .bulbo{width:14px;height:14px;border-radius:50%;background:#B8C5D3;box-shadow:0 0 0 4px rgba(184,197,211,.3);flex:none}
+.light[data-s="ok"] .bulbo{background:#16A34A;box-shadow:0 0 0 4px rgba(22,163,74,.22)}
+.light[data-s="err"] .bulbo{background:var(--brasa);box-shadow:0 0 0 4px rgba(228,87,46,.22)}
+.light[data-s="wait"] .bulbo{background:#F59E0B;box-shadow:0 0 0 4px rgba(245,158,11,.25)}
+.olsteps{list-style:none;padding:0;margin:0;counter-reset:o;display:flex;flex-direction:column;gap:12px}
+.olsteps li{counter-increment:o;display:flex;gap:12px;font-size:14.5px;align-items:flex-start}
+.olsteps li::before{content:counter(o);width:28px;height:28px;border-radius:50%;background:var(--brasa-suave);color:var(--brasa);font:700 13px var(--mono);display:grid;place-items:center;flex:none}
+
+/* Acordeones */
+.acc{background:#fff;border:1px solid var(--linea);border-radius:var(--r);margin-bottom:12px;box-shadow:var(--sombra);overflow:hidden}
+.acc>summary{list-style:none;cursor:pointer;padding:15px 18px;display:flex;align-items:center;gap:12px}
+.acc>summary::-webkit-details-marker{display:none}
+.acc>summary .ai{width:36px;height:36px;border-radius:10px;background:var(--papel);color:var(--acero);display:grid;place-items:center;flex:none}
+.acc[open]>summary .ai{background:var(--tinta);color:#fff}
+.acc>summary b{font-family:var(--display);font-size:17px;display:block}
+.acc>summary small{display:block;color:var(--gris);font-size:13px}
+.acc>summary .chev{margin-left:auto;transition:transform .2s;color:var(--acero-claro)}
+.acc[open]>summary .chev{transform:rotate(180deg)}
+.acc .inner{padding:4px 18px 18px;border-top:1px solid var(--linea-2)}
+.acc .inner>*:first-child{margin-top:14px}
+.prompt-ta{font-family:var(--mono);font-size:12.3px;min-height:130px;background:#FBFDFE}
+
+/* Resumen lateral */
+.sum h3{margin-bottom:10px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat{background:var(--papel);border-radius:12px;padding:10px 12px}
+.stat b{display:block;font:800 24px var(--display);letter-spacing:-.02em;line-height:1.1}
+.stat span{font-size:12.3px;color:var(--gris)}
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.checks li{display:flex;gap:9px;align-items:center;color:var(--gris)}
+.checks li .ck{width:20px;height:20px;border-radius:50%;border:2px solid var(--linea);display:grid;place-items:center;flex:none}
+.checks li.on{color:var(--tinta)}
+.checks li.on .ck{background:var(--forjado);border-color:var(--forjado);color:#fff}
+.checks li .ck svg{width:12px;height:12px}
+.docname{margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--tinta);color:#C3D3E2;font-size:13.5px}
+.docname b{color:#fff}
+
+/* Generación */
+.agents{display:flex;flex-direction:column;gap:10px}
+.agent{background:#fff;border:1px solid var(--linea);border-radius:var(--r);box-shadow:var(--sombra);overflow:hidden;transition:border-color .2s}
+.agent-h{display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer}
+.agent .ai{width:42px;height:42px;border-radius:12px;background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--c);display:grid;place-items:center;flex:none;transition:all .2s}
+.agent .ai svg{width:20px;height:20px}
+.agent-t{flex:1;min-width:0}
+.agent-t b{display:block;font-family:var(--display);font-size:16.5px}
+.agent-t span{display:block;font-size:13px;color:var(--gris)}
+.pill{font-size:12.5px;font-weight:700;border-radius:999px;padding:4px 10px;background:var(--linea-2);color:var(--gris);white-space:nowrap}
+.agent[data-s="run"]{border-color:#F59E0B}
+.agent[data-s="run"] .ai{background:var(--c);color:#fff;animation:pulse 1s infinite alternate}
+.agent[data-s="run"] .pill{background:#FFF1D6;color:#8A5A00}
+.agent[data-s="ok"] .ai{background:var(--c);color:#fff}
+.agent[data-s="ok"] .pill{background:var(--forjado-suave);color:var(--forjado)}
+.agent[data-s="err"]{border-color:var(--brasa)}
+.agent[data-s="err"] .pill{background:var(--brasa-suave);color:var(--brasa)}
+.agent-b{display:none;padding:4px 18px 16px 72px;font-size:14px;border-top:1px solid var(--linea-2);background:#FBFDFE}
+.agent.open .agent-b{display:block}
+@media(max-width:600px){.agent-b{padding-left:18px}}
+@keyframes pulse{from{transform:scale(1);box-shadow:0 0 0 0 rgba(228,87,46,.5)}to{transform:scale(1.06);box-shadow:0 0 0 10px rgba(228,87,46,0)}}
+.forging{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:14px;background:var(--tinta);color:#fff;margin-bottom:16px}
+.forging .spark{width:44px;height:44px;border-radius:12px;background:var(--brasa);display:grid;place-items:center;flex:none;animation:pulse 1s infinite alternate}
+.forging.done .spark{background:var(--forjado);animation:none}
+.forging.err .spark{animation:none}
+.forging b{font-family:var(--display);font-size:18px;display:block}
+.forging span{font-size:14px;color:#C3D3E2}
+.mini-list{margin:10px 0 0;padding:0;list-style:none}
+.mini-list li{padding:5px 0;border-bottom:1px solid var(--linea-2)}
+.mini-list li:last-child{border-bottom:0}
+.code{display:inline-block;font:700 11px var(--mono);border-radius:5px;padding:1px 6px;margin-right:6px;background:var(--linea-2);color:var(--acero)}
+
+/* Guía */
+.res-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.res-head h2{font-family:var(--display);font-weight:800;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em;margin:0;flex:1;min-width:240px;line-height:1.1}
+.doc{background:#fff;border:1px solid var(--linea);border-radius:18px;box-shadow:var(--sombra-alta);padding:40px 44px;max-width:900px;margin:0 auto}
+@media(max-width:700px){.doc{padding:22px 16px}}
+.doc-h{border-bottom:3px solid var(--tinta);padding-bottom:18px;margin-bottom:26px}
+.doc-kind{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--brasa);margin:0 0 6px}
+.doc-h h1{font-family:var(--display);font-weight:800;font-size:clamp(26px,3.4vw,36px);letter-spacing:-.025em;line-height:1.05;margin:0 0 12px}
+.meta{display:flex;flex-wrap:wrap;gap:6px}
+.meta span{font-size:12.8px;font-weight:600;background:var(--papel);color:var(--acero);border-radius:999px;padding:4px 11px}
+.dsec{margin-bottom:28px}
+.dsec h2{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.01em;margin:0 0 10px;display:flex;align-items:center;gap:10px}
+.dsec h2 .num{width:28px;height:28px;border-radius:8px;background:var(--tinta);color:#fff;font:700 13px var(--mono);display:grid;place-items:center;flex:none}
+.dsec p{margin:0 0 10px;max-width:75ch}
+.sublab{font-size:13px;font-weight:700;color:var(--acero-claro);margin:14px 0 6px}
+.row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--linea-2);font-size:14.5px;align-items:flex-start}
+.row:last-child{border-bottom:0}
+.row .code{margin-top:2px;flex:none}
+.code.cg{background:#E6F0FA;color:var(--c-ctx)}
+.code.ce{background:#EEEAFB;color:var(--c-comp)}
+.code.bl{background:var(--forjado-suave);color:var(--forjado)}
+.code.tm{background:var(--tinta);color:#fff}
+.row .hrs{margin-left:auto;font-size:12.5px;color:var(--gris);white-space:nowrap}
+.blk{font-weight:700;margin:16px 0 4px;display:flex;gap:8px;align-items:baseline}
+.blk small{font-weight:500;color:var(--gris)}
+.tbl-wrap{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:14px}
+table.t th{background:var(--tinta);color:#fff;text-align:left;padding:9px 11px;font-size:12.5px;font-weight:700}
+table.t td{padding:9px 11px;border-bottom:1px solid var(--linea-2);vertical-align:top}
+table.t tr:nth-child(even) td{background:#FAFCFE}
+.peso{font-weight:800;color:var(--brasa);white-space:nowrap}
+.note{margin-top:12px;padding:11px 14px;background:var(--papel);border-left:4px solid var(--forjado);border-radius:8px;font-size:14px}
+.demo-flag{background:#FFF8E6;border:1px solid #F3DDA0;color:#6B4E00;border-radius:12px;padding:11px 15px;font-size:14px;margin:0 auto 16px;max-width:900px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.demo-flag svg{color:#C98200}
+
+/* Navegación inferior */
+.bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:35;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--linea)}
+.bn-in{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px}
+.bn-hint{flex:1;text-align:center;font-size:14px;color:var(--gris)}
+.bn-hint b{color:var(--tinta)}
+@media(max-width:600px){.bn-hint{display:none}.bn-in{justify-content:space-between}}
+
+/* Modal */
+.modal{position:fixed;inset:0;z-index:60;background:rgba(15,34,55,.55);display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.modal.on{display:flex}
+.modal-box{background:#fff;border-radius:18px;max-width:760px;width:100%;box-shadow:var(--sombra-alta);overflow:hidden}
+.modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--tinta);color:#fff}
+.modal-head h2{font-family:var(--display);font-size:22px;margin:0;flex:1}
+.modal-head button{background:transparent;border:1px solid #4A6787;color:#fff;border-radius:9px;padding:6px 10px}
+.modal-body{padding:18px 20px 22px}
+.glos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.glos{grid-template-columns:1fr}}
+.glos div{background:var(--papel);border-radius:12px;padding:12px 14px}
+.glos b{display:block;font-family:var(--display);font-size:16px;margin-bottom:2px}
+.glos span{font-size:13.8px;color:var(--acero)}
+.hist{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--linea);border-radius:12px;margin-bottom:8px}
+.hist-t{flex:1;min-width:0;cursor:pointer}
+.hist-t b{display:block;font-size:15px}
+.hist-t span{font-size:12.8px;color:var(--gris)}
+.hist:hover{border-color:var(--acero-claro)}
+.iconbtn{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--linea);background:#fff;color:var(--acero);display:grid;place-items:center;padding:0}
+.iconbtn:hover{border-color:var(--brasa);color:var(--brasa)}
+.empty{text-align:center;color:var(--gris);padding:30px 10px}
+
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:var(--tinta);color:#fff;padding:11px 18px;border-radius:12px;font-size:14.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:70;max-width:90vw;text-align:center;box-shadow:var(--sombra-alta)}
+.toast.on{opacity:1;transform:translateX(-50%)}
+footer{max-width:1180px;margin:0 auto;padding:0 16px 30px;font-size:13px;color:#6E8299}
+footer hr{border:0;border-top:1px solid var(--linea);margin:0 0 14px}
+
+@media print{
+  body{background:#fff;padding:0}
+  .topbar,.bottomnav,.res-head,.demo-flag,.okbox,footer,.toast,.modal{display:none!important}
+  main{padding:0;max-width:none}
+  .screen{display:none!important}
+  
+  .doc{box-shadow:none;border:0;padding:0;max-width:none}
+  .dsec{break-inside:avoid-page}
+  table.t th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+/* ══ v2 ══ */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:640px){.grid3{grid-template-columns:1fr}}
+.feats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:960px){.feats{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.feats{grid-template-columns:1fr}}
+.feat{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px;border-top:4px solid var(--c)}
+.feat .pi{width:38px;height:38px;border-radius:11px;background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--c);display:grid;place-items:center;margin-bottom:10px}
+.feat b{display:block;font-family:var(--display);font-size:17px;margin-bottom:3px}
+.feat span{display:block;font-size:13.5px;color:var(--gris);line-height:1.45}
+.importbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--tinta);color:#EAF1F7;border-radius:var(--r);padding:14px 16px;margin-bottom:18px}
+.importbar .pi{width:40px;height:40px;border-radius:11px;background:var(--brasa);display:grid;place-items:center;flex:none}
+.importbar b{display:block;font-size:15px}
+.importbar span{display:block;font-size:13.3px;color:#A9C0D4}
+.importbar .btn-dark{background:#fff;color:var(--tinta)}
+.importbar .btn-dark:hover{background:#EAF1F7}
+.inacc{border-top:1px solid var(--linea-2);margin-top:4px;padding-top:12px}
+.inacc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--acero)}
+.inacc>summary::-webkit-details-marker{display:none}
+.inacc>summary .chev{margin-left:auto;transition:transform .2s;color:var(--acero-claro)}
+.inacc[open]>summary .chev{transform:rotate(180deg)}
+.rec{display:inline-block;font:700 11px var(--texto);background:var(--forjado-suave);color:var(--forjado);border-radius:999px;padding:2px 8px;vertical-align:2px;margin-left:4px}
+.checkgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:560px){.checkgrid{grid-template-columns:1fr}}
+.checkgrid label{display:flex;gap:9px;align-items:center;margin:0;padding:9px 11px;border-radius:10px;background:var(--papel);font-weight:500;color:var(--tinta);cursor:pointer;font-size:14px}
+.checkgrid input{width:18px;height:18px;accent-color:var(--forjado);margin:0}
+.checkgrid label:has(input:checked){background:var(--forjado-suave)}
+.drop{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;border:2px dashed var(--linea);border-radius:14px;padding:24px;cursor:pointer;color:var(--acero);margin:0;font-weight:500}
+.drop svg{width:30px;height:30px;color:var(--brasa)}
+.drop b{font-size:15px;color:var(--tinta)}
+.drop span{font-size:13px;color:var(--gris)}
+.drop.over,.drop:hover{border-color:var(--brasa);background:var(--brasa-suave)}
+
+
+
+/* ══ FronterIA ══ */
+.modo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media(max-width:700px){.modo{grid-template-columns:1fr}}
+.modo button{text-align:left;background:#fff;border:2px solid var(--linea);border-radius:18px;padding:18px;display:flex;gap:14px;align-items:flex-start;box-shadow:var(--sombra)}
+.modo button[aria-pressed="true"]{border-color:var(--brasa);box-shadow:0 0 0 3px rgba(228,87,46,.18)}
+.modo .pi{width:46px;height:46px;border-radius:14px;background:var(--c);color:#fff;display:grid;place-items:center;flex:none}
+.modo .pi svg{width:22px;height:22px}
+.modo b{display:block;font-family:var(--display);font-size:19px;margin-bottom:4px}
+.modo span span{display:block;font-size:14px;color:var(--gris);line-height:1.45}
+.consola{position:sticky;top:64px;z-index:20;background:var(--tinta);color:#EAF1F7;border-radius:0 0 16px 16px;padding:10px 16px;margin:-8px 0 18px;box-shadow:var(--sombra-alta)}
+.consola.hidden{display:none}
+.c-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.c-top b{font-size:14.5px}
+.c-top .qs{flex:1;min-width:200px;font-size:13.5px;color:#C3D3E2}
+.c-bar{height:5px;background:#24405E;border-radius:4px;overflow:hidden;margin-top:8px}
+.c-bar i{display:block;height:100%;width:0;background:var(--brasa);transition:width .4s}
+.mapa{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+@media(max-width:900px){.mapa{grid-template-columns:1fr 1fr}}
+.grupo{background:#16304B;border-radius:10px;padding:7px 8px}
+.grupo>b{display:block;font:700 10.5px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:#8FA7BE;margin-bottom:5px}
+.ag-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border-radius:7px;padding:2px 7px;margin:2px 2px 0 0;background:#0F2237;color:#A9C0D4}
+.ag-chip.on{background:var(--brasa);color:#fff;box-shadow:0 0 0 2px rgba(228,87,46,.35)}
+.ag-chip.done{background:#0E5A4F;color:#D6F2EA}
+.c-log{max-height:150px;overflow:auto;font:12px/1.5 var(--mono);color:#C3D3E2;margin-top:8px;display:none;border-top:1px solid #24405E;padding-top:6px}
+.c-log.on{display:block}
+.c-log div{padding:1px 0}.c-log .k{color:#FFB38F}
+.idea-c{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sombra)}
+.idea-c .h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.idea-c .h b{font-size:15.5px;flex:1}
+.nov{font:800 13px var(--mono);border-radius:999px;padding:2px 9px;background:#EEEAFB;color:#6B4FD8}
+.idea-c p{margin:6px 0 0;font-size:14px}
+.idea-c .cer{font-size:12.5px;color:var(--gris);margin-top:6px}
+.dec{font-weight:800;font-size:11.5px;border-radius:999px;padding:2px 9px;text-transform:uppercase;letter-spacing:.04em}
+.dec.good{background:var(--forjado-suave);color:var(--forjado)}.dec.bad{background:var(--brasa-suave);color:var(--brasa)}.dec.engineer,.dec.refine{background:#FFF1D6;color:#8A5A00}.dec.pend{background:var(--linea-2);color:var(--gris)}.dec.best{background:var(--tinta);color:#fff}
+table.res{width:100%;border-collapse:collapse;font-size:13.5px}
+table.res th{background:var(--tinta);color:#fff;text-align:left;padding:8px 10px;font-size:12px}
+table.res td{padding:8px 10px;border-bottom:1px solid var(--linea-2);vertical-align:top}
+table.res td.n{text-align:right;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+table.res tr.best td{background:var(--forjado-suave)}
+.pos{color:var(--forjado);font-weight:700}.neg{color:var(--brasa);font-weight:700}
+pre.code{background:#0B1C2E;color:#D6E4F0;border-radius:10px;padding:10px 12px;font:12px/1.5 var(--mono);overflow:auto;max-height:340px;white-space:pre}
+.barras{display:flex;flex-direction:column;gap:6px}
+.barra-f{display:grid;grid-template-columns:minmax(120px,220px) 1fr 80px;gap:10px;align-items:center;font-size:13px}
+.barra-f .t{height:12px;background:var(--linea-2);border-radius:6px;position:relative;overflow:hidden}
+.barra-f .t i{position:absolute;top:0;bottom:0;border-radius:6px}
+.mdview{font-family:Georgia,"Times New Roman",serif;font-size:16px;line-height:1.7}
+.mdview h1{font-family:var(--display);font-size:26px;margin:0 0 10px;line-height:1.2}.mdview h2{font-family:var(--display);font-size:20px;margin:22px 0 6px}.mdview h3{font-size:16px;margin:14px 0 4px}
+.mdview table{border-collapse:collapse;font-family:var(--texto);font-size:13px;margin:10px 0;width:100%}
+.mdview td,.mdview th{border-top:1px solid #B8C5D3;border-bottom:1px solid #B8C5D3;padding:5px 8px;text-align:left}
+.mdview th{background:var(--papel)}
+.mdview ul,.mdview ol{padding-left:22px}
+.mdview pre{background:#0B1C2E;color:#D6E4F0;border-radius:10px;padding:10px;font-size:12px;overflow:auto}
+.mdview mark{background:rgba(228,87,46,.22);border-bottom:2px solid var(--brasa)}
+.rev{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.rev .sc{font:800 26px var(--display)}
+.rev ul{margin:4px 0 8px;padding-left:18px;font-size:13.5px}
+.cfg-n input{max-width:90px}
+
+/* ══ AntiConvocatorIA ══ */
+/* ocho pasos: solo se muestra la etiqueta del paso actual */
+.tb-tools{flex:none}
+.stepper{overflow:hidden}
+.sdot .lbl{display:none}.sdot[data-state="now"] .lbl{display:inline}
+.stepper{justify-content:center;min-width:0}
+@media(max-width:720px){.sdot[data-state="now"] .lbl{display:none}.sline{flex:1 1 4px;min-width:2px}.sdot{padding:4px 2px}.sdot .n{width:26px;height:26px}}
+
+:root{--teal:#0E7C6B;--sello:#E4572E}
+.idea{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:960px){.idea{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.idea{grid-template-columns:1fr}}
+.idea div{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px}
+.idea b{display:block;font-family:var(--display);font-size:17px;margin-bottom:4px}
+.idea span{font-size:13.8px;color:var(--gris);line-height:1.5;display:block}
+.idea .k{font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brasa);margin-bottom:8px}
+.idea div.yes{border-color:#A9DCCF;background:var(--forjado-suave)}
+.idea div.yes .k{color:var(--forjado)}
+.quote{margin:22px 0 0;font-family:var(--display);font-size:clamp(20px,2.6vw,28px);font-weight:700;letter-spacing:-.02em;color:#fff}
+.quote span{color:var(--brasa)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:0 0 16px}
+.metric{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:14px 16px;box-shadow:var(--sombra)}
+.metric-v{font:800 34px var(--display);letter-spacing:-.03em;line-height:1.05;color:var(--tinta)}
+.metric-v.good{color:var(--forjado)} .metric-v.warn{color:var(--brasa)} .metric-v.mid{color:#B7791F}
+.metric-l{font-weight:700;font-size:14px;margin-top:4px}
+.metric-n{font-size:12.8px;color:var(--gris);margin-top:4px;line-height:1.45}
+.substeps{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.substeps span{font-size:12.5px;font-weight:600;border-radius:999px;padding:5px 11px;background:var(--linea-2);color:var(--gris)}
+.substeps span.on{background:#FFF1D6;color:#8A5A00}
+.substeps span.done{background:var(--forjado-suave);color:var(--forjado)}
+.substeps span.fail{background:var(--brasa-suave);color:var(--brasa)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.heat{border-collapse:separate;border-spacing:3px;font-size:13px;width:100%}
+.heat th{font-size:11.5px;color:var(--gris);font-weight:700;text-align:center;padding:4px;white-space:nowrap}
+.heat th.l,.heat td.l{text-align:left}
+.heat td{text-align:center;border-radius:6px;padding:7px 4px;min-width:34px}
+.heat td.l{padding:6px 8px 6px 0;min-width:170px;font-weight:600}
+.heat td.c0{background:#F3F6FA;color:#B8C5D3}
+.heat td.p{font-weight:800}
+.aband{display:flex;flex-direction:column;gap:6px}
+.aband-row{display:grid;grid-template-columns:minmax(140px,1.2fr) 2fr minmax(150px,1fr);gap:10px;align-items:center;font-size:13.5px}
+.aband-bar{height:10px;background:var(--linea-2);border-radius:6px;overflow:hidden}
+.aband-fill{height:100%;background:var(--brasa);border-radius:6px}
+.aband-n{color:var(--gris);font-size:12.5px}
+@media(max-width:600px){.aband-row{grid-template-columns:1fr}}
+.conv{background:#FBFDFE;border:1.5px solid var(--linea);border-radius:12px;margin-bottom:8px}
+.conv>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;flex-wrap:wrap}
+.conv>summary::-webkit-details-marker{display:none}
+.conv-year{font:700 13px var(--mono);background:var(--tinta);color:#fff;border-radius:7px;padding:3px 9px}
+.conv-meta{font-size:13px;color:var(--gris);flex:1}
+.conv-src{font-size:12px;color:var(--acero-claro);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-body{padding:4px 12px 12px}
+.ing{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.ing div{display:flex;gap:10px;font-size:13px;justify-content:space-between;padding:6px 10px;background:var(--papel);border-radius:8px}
+.ing .ok{color:var(--forjado);font-weight:600}.ing .err{color:var(--brasa);font-weight:600}.ing .warn{color:#B7791F;font-weight:600}
+.bp-scroll{overflow-x:auto}
+table.bp{border-collapse:separate;border-spacing:3px;width:100%;font-size:13.5px}
+table.bp th{font-size:12px;color:var(--gris);font-weight:700;padding:4px;text-align:center;white-space:nowrap}
+table.bp th.l{text-align:left}
+table.bp td.tema{font-weight:600;padding-right:8px;min-width:180px}
+table.bp td.cell{padding:0;min-width:64px}
+.bp-in{position:relative;border-radius:8px;display:flex;align-items:center;justify-content:center;height:40px}
+.bp-in input{width:48px;border:0;background:transparent;text-align:center;font:700 14px var(--texto);color:var(--tinta);padding:6px 0}
+.bp-in input:focus{box-shadow:none;background:rgba(255,255,255,.7);border-radius:6px}
+.bp-in.dark input{color:#fff}
+.bp-in.sel{outline:2.5px solid var(--brasa);outline-offset:-2px}
+.bp-hits{position:absolute;top:-7px;right:-5px;background:var(--brasa);color:#fff;border-radius:999px;font:700 10.5px var(--texto);padding:1px 6px}
+.bp-peso{width:64px!important;padding:8px!important;text-align:center;font-weight:700}
+.deuda{display:inline-block;height:8px;border-radius:4px;background:var(--brasa);vertical-align:1px;margin-right:8px}
+.deuda-0{background:var(--linea)}
+.rowsum{font-size:11.5px;color:var(--gris);text-align:center}
+.rowsum.bad{color:var(--brasa);font-weight:700}
+.legend{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--gris);margin-top:10px}
+.legend-bar{width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,rgba(14,124,107,.05),rgba(14,124,107,.8))}
+.acta{background:var(--tinta);color:#EAF1F7;border-radius:18px;padding:22px;margin-bottom:16px;box-shadow:var(--sombra-alta);position:relative;overflow:hidden}
+.acta::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(228,87,46,.35),transparent 65%)}
+.acta>*{position:relative;z-index:1}
+.acta h3{font-family:var(--display);font-size:22px;margin:0}
+.acta .sub{font-size:13px;color:#A9C0D4;margin:2px 0 14px}
+.acta dl{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:0;font-size:14px}
+.acta dt{color:#8FA7BE;font-weight:600}
+.acta dd{margin:0;word-break:break-all}
+.acta code{background:#1B3350;color:#9FE3D4;font-size:12.5px}
+@media(max-width:600px){.acta dl{grid-template-columns:1fr}}
+.intentos{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+.intento{display:grid;grid-template-columns:78px 1fr 52px;gap:10px;align-items:center;font-size:12.5px}
+.intento .track{position:relative;height:10px;background:#1E3550;border-radius:6px}
+.intento .fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+.intento .lim{position:absolute;top:-4px;bottom:-4px;width:2px;background:#F5BF4F}
+.intento .exp{position:absolute;top:-4px;bottom:-4px;width:2px;background:#8FA7BE}
+.intento .v{text-align:right;font-weight:700}
+.tagx{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--linea-2);color:var(--acero);margin:1px 2px}
+.tagx.t{background:var(--forjado-suave);color:var(--forjado)}
+.tagx.a{background:var(--brasa-suave);color:var(--brasa)}
+.paper{background:#fff;border:1px solid var(--linea);border-radius:18px;box-shadow:var(--sombra-alta);padding:34px 38px;max-width:880px;margin:0 auto}
+@media(max-width:700px){.paper{padding:20px 16px}}
+.paper-head{border-bottom:3px solid var(--tinta);padding-bottom:14px;margin-bottom:16px}
+.paper-head h3{font-family:var(--display);font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+.paper-head .pm{font-size:13.5px;color:var(--gris)}
+.q{padding:14px 0;border-bottom:1px solid var(--linea-2)}
+.q:last-child{border-bottom:0}
+.q-top{display:flex;gap:10px}
+.q-n{font:800 16px var(--display);flex:none;min-width:24px}
+.q-text{white-space:pre-wrap;flex:1}
+.q-pts{flex:none;font-size:12.5px;color:var(--gris);white-space:nowrap}
+.opts{margin:8px 0 0 34px;display:flex;flex-direction:column;gap:4px;font-size:14.5px}
+.opts .ok{color:var(--forjado);font-weight:700}
+.q-meta{margin:10px 0 0 34px}
+.variantes{margin:10px 0 0 34px;background:var(--papel);border-radius:10px;padding:10px 12px;font-size:13.5px}
+.variantes .vt{font-weight:700;color:var(--acero);margin-bottom:4px;font-size:12.5px}
+.variantes .vi{padding:5px 0;border-top:1px dashed var(--linea)}
+.variantes .vi:first-of-type{border-top:0}
+.crit{margin:8px 0 0 34px;font-size:13.5px;border-left:3px solid var(--forjado);padding:6px 10px;background:var(--forjado-suave);border-radius:0 8px 8px 0}
+.carta{background:#fff;border:1px solid var(--linea);border-radius:18px;box-shadow:var(--sombra-alta);padding:34px 40px;max-width:760px;margin:0 auto;font-size:16.5px;line-height:1.65}
+.carta p{margin:0 0 14px}
+@media(max-width:700px){.carta{padding:22px 18px}}
+.pubbox{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;justify-content:center}
+.stale{background:#FFF8E6;border:1px solid #F3DDA0;color:#6B4E00;border-radius:12px;padding:11px 15px;font-size:14px;margin-bottom:14px}
+.verify-ok{background:var(--forjado-suave);color:#0B5A4E;border-radius:12px;padding:12px 14px;font-weight:600}
+.verify-ko{background:var(--brasa-suave);color:var(--aviso);border-radius:12px;padding:12px 14px;font-weight:600}
+.keyhide{font-family:var(--mono);letter-spacing:.1em}
+@media print{
+  .noprint,.acta .intentos{display:none!important}
+  .screen.on{display:block!important}
+  .paper,.carta{box-shadow:none;border:0;padding:0}
+}
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></symbol>
+  <symbol id="i-quiz" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/></symbol>
+  <symbol id="i-cards" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6M10 22h4"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 3v4M17 5h4M5 17v4M3 19h4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+  <symbol id="i-form" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-tablet" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></symbol>
+</svg>
+
+<div class="topbar">
+  <div class="tb-in">
+    <button class="logo" id="goHome" type="button" aria-label="Ir al inicio"><span class="anv"><svg class="i"><use href="#i-sparkles"/></svg></span><span>Fronter<em>IA</em></span></button>
+    <nav class="stepper" id="stepper" aria-label="Pasos"></nav>
+    <div class="tb-tools"><button class="tb-btn" id="btnHelp" type="button"><svg class="i"><use href="#i-help"/></svg><span class="lbl">Ayuda</span></button></div>
+  </div>
+  <div class="progress"><span id="progBar"></span></div>
+</div>
+
+<main id="app">
+<div class="consola hidden" id="consola">
+  <div class="c-top"><span class="spin" id="cSpin"></span><b id="cAgente">Preparado</b><span class="qs" id="cTexto"></span><button class="btn btn-sm" id="btnLog" type="button" style="background:transparent;color:#fff;border-color:#4A6787">Registro</button><button class="btn btn-sm" id="btnStop" type="button" style="background:var(--brasa);color:#fff;border-color:var(--brasa)">Detener</button></div>
+  <div class="c-bar"><i id="cBar"></i></div>
+  <div class="mapa" id="mapa"></div>
+  <div class="c-log" id="cLog"></div>
+</div>
+
+<!-- ═════ 0 · INICIO ═════ -->
+<section class="screen" data-step="0">
+  <div class="hero">
+    <p class="eyebrow">Basada en ScientistTwo (Nam et al., Google Cloud AI Research, 2026 · arXiv:2609.19644)</p>
+    <h1>Un equipo de agentes que <em>investiga por su cuenta</em></h1>
+    <p class="lede">Tú planteas el problema. Los agentes buscan las limitaciones del estado del arte, generan ideas y contrastan su novedad en la literatura, las prueban con experimentos reales en tu navegador, se quedan con lo que funciona, lo desmontan con ablaciones, escriben el artículo y lo defienden ante un revisor simulado. Cada decisión queda registrada.</p>
+    <div class="actions">
+      <button class="btn btn-primary btn-big" id="btnStart" type="button"><svg class="i"><use href="#i-play"/></svg>Plantear un problema</button>
+      <button class="btn btn-ghost btn-big" id="btnDemo" type="button"><svg class="i"><use href="#i-eye"/></svg>Ver una investigación completa</button>
+    </div>
+    <p class="quote">Candidato, crítico, refinamiento: <span>el mismo bucle en cada etapa.</span></p>
+  </div>
+  <h2 class="sec-title">El ciclo de ScientistTwo, en seis etapas</h2>
+  <div class="journey" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="jstop" style="--c:#1F6FB2"><span class="jn">1</span><div class="ji"><svg class="i"><use href="#i-target"/></svg></div><b>Limitaciones</b><span>Un extractor las lista y un verificador pide las que faltan.</span></div>
+    <div class="jstop" style="--c:#6B4FD8"><span class="jn">2</span><div class="ji"><svg class="i"><use href="#i-sparkles"/></svg></div><b>Ideas y novedad</b><span>Ideas que atacan esas limitaciones, ordenadas por novedad frente a trabajos reales de OpenAlex.</span></div>
+    <div class="jstop" style="--c:#0E8C7A"><span class="jn">3</span><div class="ji"><svg class="i"><use href="#i-cpu"/></svg></div><b>Subconjunto → completo</b><span>Primero en una parte del benchmark; solo lo prometedor pasa al completo. Un crítico decide.</span></div>
+    <div class="jstop" style="--c:#C98200"><span class="jn">4</span><div class="ji"><svg class="i"><use href="#i-refresh"/></svg></div><b>Evolución</b><span>Las ideas nuevas aprenden de los éxitos y los fracasos anteriores.</span></div>
+    <div class="jstop" style="--c:#E4572E"><span class="jn">5</span><div class="ji"><svg class="i"><use href="#i-scale"/></svg></div><b>Ablaciones</b><span>Se quita cada componente para ver de dónde sale la mejora.</span></div>
+    <div class="jstop" style="--c:#0F2237"><span class="jn">6</span><div class="ji"><svg class="i"><use href="#i-doc"/></svg></div><b>Revisión y réplica</b><span>Artículo, revisor, experimentos para responderle y metarrevisión.</span></div>
+  </div>
+  <h2 class="sec-title">Dos modos</h2>
+  <div class="idea" style="grid-template-columns:1fr 1fr">
+    <div class="yes"><p class="k">Laboratorio ejecutable</p><b>Aprendizaje automático tabular</b><span>Superar a un clasificador de referencia en un benchmark de varios conjuntos. El código lo escriben los agentes y se ejecuta de verdad en tu navegador con scikit-learn. Puedes añadir tus propios datos.</span></div>
+    <div><p class="k">Propuesta de investigación</p><b>Cualquier disciplina</b><span>El mismo ciclo, sin ejecutar: diseño experimental con piloto y estudio completo, plan de ablaciones y una propuesta revisada, con referencias reales de OpenAlex.</span></div>
+  </div>
+  <div class="aviso" style="margin-top:18px"><b>Lo que no es.</b> Una versión a escala de navegador del marco del artículo, pensada para entenderlo y usarlo en docencia e investigación. No reproduce los 107 problemas ni los modelos del artículo. Los resultados del laboratorio son reales pero pequeños; el artículo generado es un borrador para que tú lo revises, no un trabajo para enviar tal cual.</div>
+</section>
+
+<!-- ═════ 1 · CLAVE ═════ -->
+<section class="screen" data-step="1">
+  <header class="sh" style="--c:#E4572E"><div class="sh-ico"><svg class="i"><use href="#i-key"/></svg></div>
+    <div><p class="sh-step">Paso previo</p><h2>Clave y modelo</h2><p class="sh-lede">Los agentes usan tu clave de OpenAI, que se guarda solo en este navegador. Una investigación completa del laboratorio hace entre 25 y 40 consultas.</p></div></header>
+  <div class="cols">
+    <div class="card">
+      <h3><span class="num">1</span>Tu clave de OpenAI</h3>
+      <div class="keyrow"><input type="password" id="apiKey" placeholder="sk-proj-…" autocomplete="off" spellcheck="false"><button class="eye" id="btnEye" type="button" aria-label="Mostrar u ocultar"><svg class="i"><use href="#i-eye"/></svg></button></div>
+      <div class="actions" style="margin-top:12px"><button class="btn btn-dark btn-sm" id="btnTest" type="button"><svg class="i"><use href="#i-check"/></svg>Comprobar clave</button></div>
+      <div class="light" id="keyLight" data-s=""><span class="bulbo"></span><span id="keyMsg">Sin comprobar</span></div>
+      <div class="grid2" style="margin-top:14px"><div class="field"><label for="model">Modelo</label><input type="text" id="model" list="mlist"><datalist id="mlist"><option value="gpt-6-luna"><option value="gpt-4.1"><option value="gpt-4.1-mini"><option value="gpt-4o-mini"></datalist></div><div class="field"><label for="mailto">Correo para OpenAlex <small>(opcional)</small></label><input type="text" id="mailto" placeholder="nombre@universidad.es"></div></div>
+    </div>
+    <div class="card sticky"><h3><svg class="i"><use href="#i-help"/></svg>¿Sin clave?</h3><p class="sub">«Ver una investigación completa» recorre un ejemplo real ya ejecutado, sin clave y sin coste.</p><ol class="olsteps"><li><span>Crea la clave en <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.</span></li><li><span>Añade saldo en <b>Billing</b>. Una investigación cuesta céntimos.</span></li></ol></div>
+  </div>
+</section>
+
+<!-- ═════ 2 · PROBLEMA ═════ -->
+<section class="screen" data-step="2">
+  <header class="sh" style="--c:#1F6FB2"><div class="sh-ico"><svg class="i"><use href="#i-target"/></svg></div>
+    <div><p class="sh-step">Paso 1 de 5</p><h2>El problema</h2><p class="sh-lede">En ScientistTwo, la persona define el reto y los agentes deciden el camino. Elige el modo y plantea el reto.</p></div></header>
+  <div class="modo">
+    <button type="button" data-modo="lab" style="--c:#0E8C7A"><span class="pi"><svg class="i"><use href="#i-cpu"/></svg></span><span><b>Laboratorio ejecutable</b><span>Clasificación tabular con experimentos reales en el navegador.</span></span></button>
+    <button type="button" data-modo="prop" style="--c:#6B4FD8"><span class="pi"><svg class="i"><use href="#i-doc"/></svg></span><span><b>Propuesta de investigación</b><span>Cualquier disciplina, sin ejecución. Termina en una propuesta revisada.</span></span></button>
+  </div>
+  <div id="boxLab">
+    <div class="cols"><div>
+      <div class="card">
+        <h3><span class="num">1</span>El reto</h3>
+        <div class="field"><label for="labProblema">Descripción del problema</label><textarea id="labProblema" style="min-height:90px"></textarea></div>
+        <div class="field" style="margin:0"><label for="labBase">Método de referencia (el «estado del arte humano»): <code>build_model()</code> con scikit-learn</label><textarea id="labBase" style="min-height:120px;font-family:var(--mono);font-size:13px"></textarea></div>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span>El benchmark</h3>
+        <p class="sub">Evaluación holística: varios conjuntos y dos métricas (F1 macro, la principal, y exactitud), con validación cruzada estratificada. El subconjunto usa los dos primeros con 3 pliegues; el completo, todos con 5.</p>
+        <div class="checkgrid" id="dsChecks"></div>
+        <details class="inacc" style="margin-top:12px"><summary><svg class="i"><use href="#i-upload"/></svg><span>Añadir mis datos (CSV)</span><svg class="i chev"><use href="#i-down"/></svg></summary>
+          <div style="margin-top:10px"><input type="file" id="csvIn" accept=".csv,.txt"><div class="field" style="margin-top:10px"><label for="csvTarget">Columna objetivo</label><select id="csvTarget"><option value="">— carga antes el CSV —</option></select></div><p class="help">Se usan las columnas numéricas; los valores ausentes se rellenan con la mediana. Los datos no salen de tu navegador. Entra en el benchmark completo.</p></div></details>
+      </div>
+    </div>
+    <aside class="card sticky sum"><h3><svg class="i"><use href="#i-sliders"/></svg>Presupuesto de la investigación</h3>
+      <div class="grid2 cfg-n">
+        <div class="field"><label for="cSeed">Ideas semilla</label><input type="number" id="cSeed" min="3" max="8" value="5"></div>
+        <div class="field"><label for="cN0">Ideas a probar</label><input type="number" id="cN0" min="1" max="5" value="3"></div>
+        <div class="field"><label for="cEng">Rondas de ajuste</label><input type="number" id="cEng" min="0" max="3" value="1"></div>
+        <div class="field"><label for="cK">Rondas de evolución</label><input type="number" id="cK" min="0" max="2" value="1"></div>
+        <div class="field"><label for="cUmbral">Nota para aceptar (1-10)</label><input type="number" id="cUmbral" min="5" max="9" value="7"></div>
+        <div class="field"><label for="cRev">Rondas de réplica</label><input type="number" id="cRev" min="0" max="2" value="1"></div>
+      </div>
+      <div class="field"><label for="cLang">Idioma del artículo</label><select id="cLang"><option value="es">Español</option><option value="en">English</option><option value="pt">Português</option></select></div>
+      <p class="help">La primera ejecución descarga el motor de Python (unos 40 MB, queda en caché). Cada evaluación completa tarda entre 20 segundos y un par de minutos.</p>
+    </aside></div>
+  </div>
+  <div id="boxProp" class="hidden">
+    <div class="cols"><div>
+      <div class="card">
+        <h3><span class="num">1</span>El reto</h3>
+        <div class="grid2"><div class="field"><label for="pDisc">Disciplina</label><input type="text" id="pDisc" placeholder="Enfermería comunitaria"></div><div class="field"><label for="pLang">Idioma de la propuesta</label><select id="pLang"><option value="es">Español</option><option value="en">English</option><option value="pt">Português</option></select></div></div>
+        <div class="field"><label for="pProblema">Problema de investigación</label><textarea id="pProblema" style="min-height:100px" placeholder="Mejorar la adherencia al tratamiento en pacientes con hipertensión en atención primaria."></textarea></div>
+        <div class="field" style="margin:0"><label for="pSota">Estado del arte: el trabajo que quieres superar <small>(resumen pegado o DOI)</small></label><textarea id="pSota" style="min-height:100px" placeholder="Pega el resumen del trabajo de referencia, o escribe su DOI (10.xxxx/…) y lo traemos de OpenAlex."></textarea><div class="actions" style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="btnDoi" type="button"><svg class="i"><use href="#i-download"/></svg>Traer el resumen desde el DOI</button><span class="help" id="doiInfo" style="margin:0"></span></div></div>
+      </div>
+    </div>
+    <aside class="card sticky sum"><h3><svg class="i"><use href="#i-sliders"/></svg>Presupuesto</h3>
+      <div class="grid2 cfg-n"><div class="field"><label for="pSeed">Ideas semilla</label><input type="number" id="pSeed" min="3" max="8" value="5"></div><div class="field"><label for="pN0">Ideas a diseñar</label><input type="number" id="pN0" min="1" max="4" value="3"></div><div class="field"><label for="pUmbral">Nota para aceptar</label><input type="number" id="pUmbral" min="5" max="9" value="7"></div><div class="field"><label for="pRev">Rondas de réplica</label><input type="number" id="pRev" min="0" max="2" value="1"></div></div>
+      <p class="help">Sin experimentos reales, el crítico juzga la <b>plausibilidad</b> del diseño, no resultados. La propuesta solo cita trabajos encontrados en OpenAlex.</p>
+    </aside></div>
+  </div>
+</section>
+
+<!-- ═════ 3 · IDEAS ═════ -->
+<section class="screen" data-step="3">
+  <header class="sh" style="--c:#6B4FD8"><div class="sh-ico"><svg class="i"><use href="#i-sparkles"/></svg></div>
+    <div><p class="sh-step">Paso 2 de 5 · §3.1 del artículo</p><h2>Limitaciones e ideas</h2><p class="sh-lede">Las ideas atacan limitaciones concretas y se ordenan por novedad frente a los trabajos más parecidos que existen.</p></div></header>
+  <div id="outIdeas"><p class="empty">Aún no ha empezado la investigación.</p></div>
+</section>
+
+<!-- ═════ 4 · EXPERIMENTOS ═════ -->
+<section class="screen" data-step="4">
+  <header class="sh" style="--c:#0E8C7A"><div class="sh-ico"><svg class="i"><use href="#i-cpu"/></svg></div>
+    <div><p class="sh-step">Paso 3 de 5 · §3.2 y §3.3</p><h2 id="expTitle">Experimentos</h2><p class="sh-lede" id="expLede">Cada idea pasa primero por el subconjunto; un crítico decide si se descarta, se ajusta o sube al benchmark completo. Las rondas de evolución aprenden de todo lo anterior.</p></div></header>
+  <div id="outExp"><p class="empty">Aún no hay experimentos.</p></div>
+</section>
+
+<!-- ═════ 5 · ABLACIONES ═════ -->
+<section class="screen" data-step="5">
+  <header class="sh" style="--c:#C98200"><div class="sh-ico"><svg class="i"><use href="#i-scale"/></svg></div>
+    <div><p class="sh-step">Paso 4 de 5 · §3.4</p><h2>Ablaciones</h2><p class="sh-lede">Se quita un componente cada vez para saber de dónde sale la mejora. Si alguno sobra, se prueba el método sin él y solo se acepta si es estrictamente mejor.</p></div></header>
+  <div id="outAbl"><p class="empty">Aún no hay ablaciones.</p></div>
+</section>
+
+<!-- ═════ 6 · ARTÍCULO ═════ -->
+<section class="screen" data-step="6">
+  <header class="sh" style="--c:#E4572E"><div class="sh-ico"><svg class="i"><use href="#i-doc"/></svg></div>
+    <div><p class="sh-step">Paso 5 de 5 · §3.5 y §3.6</p><h2>Artículo, revisión y réplica</h2><p class="sh-lede">El borrador lleva las tablas con los resultados reales. El revisor puntúa de 1 a 10; si no llega al umbral, se ejecutan experimentos para responderle y se revisa el texto.</p></div></header>
+  <div id="outRev"></div>
+  <div class="res-grid">
+    <div><div class="card"><div class="mdview" id="paper"><p class="help">Aún no hay artículo.</p></div></div>
+      <div class="actions"><button class="btn btn-word btn-sm" id="expDocx" type="button"><svg class="i"><use href="#i-download"/></svg>Word</button><button class="btn btn-ghost btn-sm" id="expMd" type="button"><svg class="i"><use href="#i-download"/></svg>Markdown</button><button class="btn btn-ghost btn-sm" id="expPy" type="button"><svg class="i"><use href="#i-download"/></svg>Código reproducible (.py)</button><button class="btn btn-ghost btn-sm" id="expJson" type="button"><svg class="i"><use href="#i-download"/></svg>Registro completo (.json)</button></div></div>
+    <aside class="qa sticky" id="qa"></aside>
+  </div>
+</section>
+</main>
+
+<footer><hr><p>FronterIA · Fernando Borrás Rocher · Universidad Miguel Hernández de Elche. Implementación a escala de navegador del marco descrito en Nam, J., Yoon, J., Pan, Y., Wang, Y., Meng, R., Ranganathan, P. y Pfister, T. (2026). <i>ScientistTwo: Pioneering the Human Knowledge Frontier with Autonomous AI</i>. arXiv:2609.19644. No es una aplicación de los autores. Los experimentos se ejecutan en tu navegador; el texto viaja a OpenAI y las búsquedas bibliográficas a OpenAlex.</p></footer>
+
+<div class="bottomnav"><div class="bn-in">
+  <button class="btn btn-ghost" id="navBack" type="button"><svg class="i"><use href="#i-left"/></svg>Atrás</button>
+  <div class="bn-hint" id="navHint"></div>
+  <button class="btn btn-primary" id="navNext" type="button"><span id="navNextTxt">Siguiente</span><svg class="i"><use href="#i-right"/></svg></button>
+</div></div>
+<div class="modal" id="mHelp" role="dialog" aria-modal="true" aria-labelledby="mHelpT"><div class="modal-box"><div class="modal-head"><h2 id="mHelpT">Ayuda</h2><button type="button" data-close>Cerrar</button></div><div class="modal-body"><div class="glos" id="glos"></div></div></div></div>
+<div class="modal" id="mCode" role="dialog" aria-modal="true" aria-labelledby="mCodeT"><div class="modal-box"><div class="modal-head"><h2 id="mCodeT">Detalle</h2><button type="button" data-close>Cerrar</button></div><div class="modal-body" id="mCodeB"></div></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+
+"use strict";
+/* ══════════════════════════════════════════════════════════
+   FronterIA · investigación autónoma al estilo ScientistTwo
+   Fernando Borrás Rocher · Universidad Miguel Hernández de Elche
+   Marco: Nam et al. (2026), arXiv:2609.19644
+   ══════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ico = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function toast(m, ms = 3600){ const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms); }
+function dl(n, c, t){ const b = c instanceof Blob ? c : new Blob([c], {type:t}); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = n; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 1500); }
+const pct = v => (v * 100).toFixed(2).replace('.', ',');
+const dpp = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2).replace('.', ',');
+
+/* ══════════ BANCO DE PRUEBAS EN PYTHON (Pyodide en un Web Worker) ══════════ */
+const HARNESS = String.raw`import json, time, math, warnings
+import numpy as np
+from sklearn import datasets
+from sklearn.base import clone
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score
+_DS = {}
+def _cargar(nombre):
+    if nombre in _DS: return _DS[nombre]
+    if nombre == 'mama': d = datasets.load_breast_cancer(); X, y = d.data, d.target
+    elif nombre == 'vino': d = datasets.load_wine(); X, y = d.data, d.target
+    elif nombre == 'iris': d = datasets.load_iris(); X, y = d.data, d.target
+    elif nombre == 'digitos': d = datasets.load_digits(); X, y = d.data, d.target
+    elif nombre == 'sintetico': X, y = datasets.make_classification(n_samples=600, n_features=20, n_informative=6, n_redundant=4, n_classes=3, n_clusters_per_class=2, flip_y=0.08, class_sep=0.8, random_state=7)
+    elif nombre == 'ruidoso': X, y = datasets.make_classification(n_samples=500, n_features=30, n_informative=5, n_redundant=2, n_classes=2, flip_y=0.2, class_sep=0.6, random_state=11)
+    elif nombre == 'propio':
+        import pandas as pd
+        df = pd.read_csv('propio.csv', sep=None, engine='python')
+        obj = open('propio_objetivo.txt').read().strip()
+        df = df.dropna(subset=[obj]); yv = df[obj].astype(str)
+        Xd = df.drop(columns=[obj]).select_dtypes(include='number')
+        Xd = Xd.fillna(Xd.median()); X = Xd.values.astype(float)
+        cl = {c:i for i,c in enumerate(sorted(yv.unique()))}; y = yv.map(cl).values
+    else: raise ValueError('Conjunto desconocido: ' + nombre)
+    _DS[nombre] = (np.asarray(X, float), np.asarray(y))
+    return _DS[nombre]
+PROHIBIDO = ['import os', 'import sys', 'subprocess', 'open(', 'eval(', 'exec(', '__import__', 'socket', 'urllib', 'requests', 'shutil', 'pickle', 'input(']
+def evaluar(codigo, conjuntos, pliegues=5, semillas=(0,), metricas=('acc','f1')):
+    for p in PROHIBIDO:
+        if p in codigo: return json.dumps({'ok':False, 'error':'Código no permitido: contiene «%s».' % p})
+    ns = {}
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore'); exec(compile(codigo, '<idea>', 'exec'), ns)
+    except Exception as e:
+        return json.dumps({'ok':False, 'error':'%s: %s' % (type(e).__name__, str(e)[:400])})
+    if 'build_model' not in ns: return json.dumps({'ok':False, 'error':'El código no define build_model().'})
+    res = {}
+    try:
+        for nombre in conjuntos:
+            X, y = _cargar(nombre); acc, f1, bal, tt = [], [], [], []
+            for s in semillas:
+                cv = StratifiedKFold(n_splits=pliegues, shuffle=True, random_state=s)
+                for tr, te in cv.split(X, y):
+                    m = clone(ns['build_model']()) if hasattr(ns['build_model'](), 'get_params') else ns['build_model']()
+                    t0 = time.perf_counter()
+                    with warnings.catch_warnings():
+                        warnings.simplefilter('ignore'); m.fit(X[tr], y[tr]); p = m.predict(X[te])
+                    tt.append(time.perf_counter() - t0)
+                    acc.append(accuracy_score(y[te], p)); f1.append(f1_score(y[te], p, average='macro')); bal.append(balanced_accuracy_score(y[te], p))
+            res[nombre] = {'acc':float(np.mean(acc)), 'acc_sd':float(np.std(acc)), 'f1':float(np.mean(f1)), 'f1_sd':float(np.std(f1)), 'bal':float(np.mean(bal)), 'seg':float(np.mean(tt)), 'n':int(len(y)), 'clases':int(len(set(y.tolist()))), 'p':int(X.shape[1])}
+    except Exception as e:
+        return json.dumps({'ok':False, 'error':'%s: %s' % (type(e).__name__, str(e)[:400])})
+    media = {k: float(np.mean([r[k] for r in res.values()])) for k in ('acc','f1','bal','seg')}
+    return json.dumps({'ok':True, 'por_conjunto':res, 'media':media})
+`;
+const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+const WORKER_SRC = `
+let py = null;
+self.onmessage = async (e) => {
+  const {id, tipo, datos} = e.data;
+  try{
+    if(tipo === 'init'){
+      importScripts(datos.url + 'pyodide.js');
+      py = await loadPyodide({indexURL: datos.url});
+      self.postMessage({id, tipo:'progreso', datos:'Cargando NumPy y scikit-learn…'});
+      await py.loadPackage(['numpy','pandas','scikit-learn']);
+      py.runPython(datos.harness);
+      self.postMessage({id, ok:true});
+    } else if(tipo === 'fichero'){ py.FS.writeFile(datos.nombre, datos.texto); self.postMessage({id, ok:true}); }
+    else if(tipo === 'evalua'){
+      const f = py.globals.get('evaluar');
+      const r = f(datos.codigo, py.toPy(datos.conjuntos), datos.pliegues, py.toPy(datos.semillas)); f.destroy();
+      self.postMessage({id, ok:true, datos:JSON.parse(r)});
+    }
+  }catch(err){ self.postMessage({id, ok:false, error:String(err && err.message || err)}); }
+};`;
+const Py = {
+  w:null, listo:false, cargando:null, n:0, pend:{},
+  arrancar(){
+    if(this.listo) return Promise.resolve(); if(this.cargando) return this.cargando;
+    this.w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], {type:'text/javascript'})));
+    this.w.onmessage = e => { const m = e.data; if(m.tipo === 'progreso'){ consola('Motor de Python', m.datos); return; } const p = this.pend[m.id]; if(!p) return; delete this.pend[m.id]; clearTimeout(p.t); m.ok ? p.ok(m.datos) : p.ko(new Error(m.error)); };
+    this.w.onerror = e => { Object.values(this.pend).forEach(p => p.ko(new Error('El motor de Python se detuvo: ' + (e.message || '')))); this.pend = {}; };
+    this.cargando = this.pide('init', {url:PYODIDE_URL, harness:HARNESS}, 300000).then(() => { this.listo = true; }).catch(e => { this.cargando = null; this.matar(); throw e; });
+    return this.cargando;
+  },
+  pide(tipo, datos, ms = 300000){ const id = ++this.n; return new Promise((ok, ko) => { const t = setTimeout(() => { delete this.pend[id]; ko(new Error('TIEMPO')); }, ms); this.pend[id] = {ok, ko, t}; this.w.postMessage({id, tipo, datos}); }); },
+  matar(){ if(this.w) this.w.terminate(); this.w = null; this.listo = false; this.cargando = null; this.pend = {}; },
+  async evalua(codigo, conjuntos, pliegues, semillas = [0], ms = 300000){
+    await this.arrancar();
+    if(R.csv && conjuntos.includes('propio')) await this.pide('fichero', {nombre:'propio.csv', texto:R.csv.texto}).then(() => this.pide('fichero', {nombre:'propio_objetivo.txt', texto:R.csv.objetivo}));
+    try{ return await this.pide('evalua', {codigo, conjuntos, pliegues, semillas}, ms); }
+    catch(e){ if(e.message === 'TIEMPO'){ this.matar(); return {ok:false, error:`La evaluación superó ${ms / 1000} s y se detuvo.`}; } return {ok:false, error:e.message}; }
+  }
+};
+const PROHIBIDO = ['import os','import sys','subprocess','open(','eval(','exec(','__import__','socket','urllib','requests','shutil','pickle','input('];
+function revisaCodigo(c){
+  if(!/def\s+build_model\s*\(/.test(c)) return 'El código no define build_model().';
+  const p = PROHIBIDO.find(x => c.includes(x)); if(p) return `Contiene «${p}», que no está permitido.`;
+  const mods = (c.match(/^\s*(?:from|import)\s+([A-Za-z_][\w]*)/gm) || []).map(x => x.trim().split(/\s+/)[1]);
+  const malos = [...new Set(mods.filter(m => !['sklearn','numpy','scipy','math'].includes(m)))];
+  return malos.length ? `Importa ${malos.join(', ')}; solo se permiten scikit-learn, NumPy y SciPy.` : null;
+}
+
+/* ══════════ AGENTES (OpenAI) ══════════ */
+const esRazonador = m => /^(gpt-[56]|o[1-9])/.test(m);
+async function agente(nombre, sistema, usuario, maxTok = 2500){
+  const key = localStorage.getItem('ia_openai_key'); if(!key) throw new Error('Falta la clave de OpenAI.');
+  if(R.parar) throw new Error('PARADO');
+  marcaAgente(nombre);
+  const modelo = localStorage.getItem('fronteria_model') || 'gpt-6-luna';
+  const body = {model:modelo, messages:[{role:'system', content:sistema + '\nResponde SOLO con JSON válido.'}, {role:'user', content:usuario}], response_format:{type:'json_object'}};
+  if(esRazonador(modelo)){ body.max_completion_tokens = maxTok * 2; body.reasoning_effort = 'low'; } else { body.temperature = 0.4; body.max_tokens = maxTok; }
+  let ultimo;
+  for(let k = 0; k < 3; k++){
+    let r;
+    try{ r = await fetch('https://api.openai.com/v1/chat/completions', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + key}, body:JSON.stringify(body)}); }
+    catch(e){ ultimo = new Error('No hay conexión con OpenAI.'); await sleep(1500 * (k + 1)); continue; }
+    if(!r.ok){ const t = await r.text(); if(r.status === 401) throw new Error('OpenAI no reconoce tu clave.'); if(r.status === 429 && /quota|billing/i.test(t)) throw new Error('Tu cuenta de OpenAI no tiene saldo.'); if(r.status === 429 || r.status >= 500){ ultimo = new Error('OpenAI respondió ' + r.status); await sleep(2500 * (k + 1)); continue; } throw new Error('OpenAI ' + r.status + ': ' + t.slice(0, 160)); }
+    const j = await r.json(); R.consultas++; R.tokens += (j.usage?.total_tokens || 0);
+    const txt = j.choices?.[0]?.message?.content || '';
+    try{ return JSON.parse(txt.replace(/^```(?:json)?|```$/g, '').trim()); }catch(e){ const m = txt.match(/\{[\s\S]*\}/); if(m){ try{ return JSON.parse(m[0]); }catch(e2){} } ultimo = new Error('La respuesta no era JSON válido.'); }
+  }
+  throw ultimo;
+}
+const LANGS = {es:'español', en:'inglés', pt:'portugués'};
+
+/* ══════════ OPENALEX: trabajos cercanos para contrastar la novedad ══════════ */
+async function openalex(consulta, n = 4){
+  try{
+    const mail = localStorage.getItem('fronteria_mail'); const u = `https://api.openalex.org/works?search=${encodeURIComponent(consulta.slice(0, 200))}&per_page=${n}&select=id,doi,display_name,publication_year,cited_by_count,authorships,primary_location,abstract_inverted_index${mail ? '&mailto=' + encodeURIComponent(mail) : ''}`;
+    const r = await fetch(u); if(!r.ok) return [];
+    return ((await r.json()).results || []).map(w => ({titulo:w.display_name, anio:w.publication_year, citas:w.cited_by_count, url:w.doi || w.id, autor:(w.authorships?.[0]?.author?.display_name || '').split(' ').pop(), revista:w.primary_location?.source?.display_name || '', resumen:resumenDe(w.abstract_inverted_index).slice(0, 500)}));
+  }catch(e){ return []; }
+}
+function resumenDe(inv){ if(!inv) return ''; const o = []; Object.entries(inv).forEach(([w, ps]) => ps.forEach(p => o[p] = w)); return o.filter(Boolean).join(' '); }
+
+/* ══════════ ESTADO ══════════ */
+const DS = {mama:['Cáncer de mama (Wisconsin)','569 × 30 · 2 clases'], vino:['Vino','178 × 13 · 3 clases'], iris:['Iris','150 × 4 · 3 clases'], digitos:['Dígitos manuscritos','1.797 × 64 · 10 clases'], sintetico:['Sintético difícil','600 × 20 · 3 clases, 8 % de etiquetas ruidosas']};
+const BASE_CODE = `def build_model():
+    from sklearn.ensemble import RandomForestClassifier
+    return RandomForestClassifier(n_estimators=200, random_state=0, n_jobs=1)`;
+const LAB_PROBLEMA = 'Superar a un bosque aleatorio (el método de referencia) en clasificación tabular de propósito general: un único método que funcione bien a la vez en todos los conjuntos del benchmark, medido por F1 macro con validación cruzada estratificada, sin ajustar nada por conjunto.';
+const R0 = () => ({modo:'lab', estado:'idle', parar:false, consultas:0, tokens:0, log:[], cfg:{}, problema:'', base_code:BASE_CODE, conjuntos:['mama','vino','iris','digitos','sintetico'], csv:null,
+  limit:[], ideas:[], base:null, trazas:[], best:null, abl:null, papel:'', revisiones:[], replica:[], meta:null, avisosNum:[], prop:null, agentesHechos:[]});
+let R = R0();
+
+/* ══════════ CONSOLA Y MAPA DE AGENTES (figura 3 del artículo) ══════════ */
+const MAPA = [['Generador de ideas',['Extractor de limitaciones','Verificador de limitaciones','Generador de ideas','Comprobador de novedad']],['Evaluador',['Programador de la referencia','Programador de subconjunto','Crítico de subconjunto','Ingeniero','Programador de conjunto completo','Crítico de conjunto completo']],['Analizador',['Evolucionador de ideas','Selector','Planificador de ablaciones','Programador de ablaciones','Crítico de ablaciones','Comparador de resultados']],['Redacción y revisión',['Redactor','Revisor','Planificador de la réplica','Programador de la réplica','Mejorador del borrador','Metarrevisor']]];
+function pintaMapa(){ $('mapa').innerHTML = MAPA.map(([g, as]) => `<div class="grupo"><b>${g}</b>${as.map(a => `<span class="ag-chip ${R.agenteActual === a ? 'on' : R.agentesHechos.includes(a) ? 'done' : ''}">${esc(a)}</span>`).join('')}</div>`).join(''); }
+function marcaAgente(a){ if(R.agenteActual && !R.agentesHechos.includes(R.agenteActual)) R.agentesHechos.push(R.agenteActual); R.agenteActual = a; $('cAgente').textContent = a; pintaMapa(); }
+function consola(agente, texto, frac){ if(agente) marcaAgente(agente); $('cTexto').textContent = texto || ''; if(frac != null) $('cBar').style.width = Math.round(frac * 100) + '%'; }
+function log(agente, texto){ R.log.push({t:new Date().toISOString(), agente, texto}); const l = $('cLog'); l.insertAdjacentHTML('beforeend', `<div><span class="k">${esc(agente)}</span> · ${esc(texto)}</div>`); l.scrollTop = 1e9; }
+$('btnLog').onclick = () => $('cLog').classList.toggle('on');
+$('btnStop').onclick = () => { if(R.estado === 'running'){ R.parar = true; $('cTexto').textContent = 'Deteniendo al terminar el paso en curso…'; } };
+
+/* ══════════ NAVEGACIÓN ══════════ */
+let step = 0;
+const STEPS = ['Inicio','Clave','Problema','Ideas','Experimentos','Ablaciones','Artículo'];
+function buildStepper(){ $('stepper').innerHTML = STEPS.map((s,i) => `${i ? `<span class="sline${i <= step ? ' on' : ''}"></span>` : ''}<button class="sdot" type="button" data-go="${i}" data-state="${i < step ? 'done' : i === step ? 'now' : ''}" ${i === step ? 'aria-current="step"' : ''}><span class="n">${i < step ? ico('check') : i === 0 ? ico('sparkles') : i === 1 ? ico('key') : i - 1}</span><span class="lbl">${s}</span></button>`).join(''); $$('#stepper [data-go]').forEach(b => b.onclick = () => go(+b.dataset.go)); }
+function go(i){ step = i; $$('.screen').forEach(s => s.classList.toggle('on', +s.dataset.step === i)); $('progBar').style.width = (i / 6 * 100) + '%'; $('consola').classList.toggle('hidden', i < 3 || R.estado === 'idle'); buildStepper(); updateNav(); if(i === 1) refreshKey(); if(i >= 3) pintaTodo(); window.scrollTo({top:0, behavior:'instant'}); }
+const HINTS = ['Mira primero una <b>investigación completa</b>: no necesita clave.','La clave se queda en este navegador.','La persona plantea el reto; los agentes eligen el camino.','Las ideas se ordenan por <b>novedad</b>, no por intuición.','Cada decisión del crítico se apoya en números reales.','Quitar una pieza es la forma más honesta de medir lo que aporta.','Lee el artículo como su primer revisor: es un borrador.'];
+const NEXT = ['Empezar','Siguiente: el problema','Iniciar la investigación','Siguiente: experimentos','Siguiente: ablaciones','Siguiente: el artículo','Volver al inicio'];
+function updateNav(){ $('navBack').classList.toggle('hidden', step === 0); $('navNextTxt').textContent = step === 2 && R.estado === 'running' ? 'Ver la investigación en curso' : NEXT[step]; $('navHint').innerHTML = HINTS[step]; }
+$('navBack').onclick = () => { if(step > 0) go(step - 1); };
+$('navNext').onclick = () => { if(step === 0) return go(localStorage.getItem('ia_openai_key') ? 2 : 1); if(step === 2){ if(R.estado === 'running') return go(3); return iniciar(); } go(step === 6 ? 0 : step + 1); };
+$('goHome').onclick = () => go(0);
+let seguir = true; /* avanza de pantalla con la investigación salvo que la persona navegue */
+function sigue(n){ if(seguir && step !== n && step >= 3) go(n); }
+
+/* ══════════ AJUSTES ══════════ */
+function setLight(s, m){ $('keyLight').dataset.s = s; $('keyMsg').textContent = m; }
+function refreshKey(){ $('apiKey').value = localStorage.getItem('ia_openai_key') || ''; $('model').value = localStorage.getItem('fronteria_model') || 'gpt-6-luna'; $('mailto').value = localStorage.getItem('fronteria_mail') || ''; if(!$('apiKey').value) setLight('', 'Sin clave todavía'); }
+$('apiKey').oninput = () => { localStorage.setItem('ia_openai_key', $('apiKey').value.trim()); setLight('', 'Clave guardada · sin comprobar'); };
+$('model').onchange = () => localStorage.setItem('fronteria_model', $('model').value.trim() || 'gpt-6-luna');
+$('mailto').onchange = () => localStorage.setItem('fronteria_mail', $('mailto').value.trim());
+$('btnEye').onclick = () => { const k = $('apiKey'); k.type = k.type === 'password' ? 'text' : 'password'; };
+$('btnTest').onclick = async () => { const k = $('apiKey').value.trim(); if(!k) return setLight('err', 'Primero pega la clave'); setLight('wait', 'Comprobando…'); try{ const r = await fetch('https://api.openai.com/v1/models', {headers:{Authorization:'Bearer ' + k}}); r.ok ? setLight('ok', 'Clave válida.') : setLight('err', r.status === 401 ? 'OpenAI no reconoce esta clave.' : 'Error ' + r.status); }catch(e){ setLight('err', 'Sin conexión con OpenAI.'); } };
+
+/* ══════════ PROBLEMA ══════════ */
+function setModo(m){ R.modo = m; $$('.modo [data-modo]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.modo === m))); $('boxLab').classList.toggle('hidden', m !== 'lab'); $('boxProp').classList.toggle('hidden', m !== 'prop'); }
+$$('.modo [data-modo]').forEach(b => b.onclick = () => { if(R.estado === 'running') return toast('Hay una investigación en curso'); setModo(b.dataset.modo); });
+function buildForm(){
+  $('labProblema').value = LAB_PROBLEMA; $('labBase').value = BASE_CODE;
+  $('dsChecks').innerHTML = Object.entries(DS).map(([k,[n,d]]) => `<label><input type="checkbox" value="${k}" checked> <span><b>${n}</b> <small style="color:var(--gris)">${d}</small></span></label>`).join('');
+}
+$('csvIn').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return; const t = await f.text(); const cab = t.split(/\r?\n/)[0]; const sep = [';', ',', '\t'].sort((a,b) => cab.split(b).length - cab.split(a).length)[0];
+  const cols = cab.split(sep).map(c => c.replace(/^"|"$/g, '').trim()); R.csv = {nombre:f.name, texto:t, objetivo:cols[cols.length - 1], cols};
+  $('csvTarget').innerHTML = cols.map(c => `<option ${c === R.csv.objetivo ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  toast(`${f.name}: ${t.split(/\r?\n/).filter(Boolean).length - 1} filas. Elige la columna objetivo.`);
+};
+$('csvTarget').onchange = () => { if(R.csv) R.csv.objetivo = $('csvTarget').value; };
+$('btnDoi').onclick = async () => {
+  const doi = ($('pSota').value.match(/10\.\d{4,9}\/[^\s]+/) || [])[0]; if(!doi) return toast('Escribe un DOI (10.xxxx/…) en el recuadro');
+  $('doiInfo').textContent = 'Buscando en OpenAlex…';
+  try{ const r = await fetch('https://api.openalex.org/works/https://doi.org/' + encodeURIComponent(doi) + '?select=display_name,publication_year,authorships,abstract_inverted_index'); if(!r.ok) throw 0; const w = await r.json(); const ab = resumenDe(w.abstract_inverted_index);
+    $('pSota').value = `${w.display_name} (${w.publication_year}). ${(w.authorships?.[0]?.author?.display_name || '')}${w.authorships?.length > 1 ? ' et al.' : ''}. DOI: ${doi}\n\n${ab || '(OpenAlex no tiene el resumen de este trabajo: pégalo a mano.)'}`; $('doiInfo').textContent = ab ? 'Resumen recuperado.' : 'Sin resumen en OpenAlex.'; }
+  catch(e){ $('doiInfo').textContent = 'No se encontró ese DOI en OpenAlex.'; }
+};
+
+
+/* ══════════════════════════════════════════════════════════
+   CICLO DEL LABORATORIO (§3.1 – §3.6)
+   ══════════════════════════════════════════════════════════ */
+const SUB = () => R.conjuntos.slice(0, 2), FULL = () => R.conjuntos;
+const f1 = r => r && r.ok ? r.media.f1 : null;
+const resumenRes = r => !r ? '—' : !r.ok ? 'ERROR: ' + r.error : Object.entries(r.por_conjunto).map(([k,v]) => `${k}: F1=${v.f1.toFixed(4)} acc=${v.acc.toFixed(4)} t=${v.seg.toFixed(2)}s`).join('; ') + ` | MEDIA F1=${r.media.f1.toFixed(4)} acc=${r.media.acc.toFixed(4)}`;
+const contexto = () => `PROBLEMA: ${R.problema}\n\nMÉTODO DE REFERENCIA (estado del arte humano):\n${R.base_code}\n\nBENCHMARK: ${FULL().map(k => k === 'propio' ? 'propio (' + (R.csv?.nombre || '') + ')' : k + ' (' + (DS[k]?.[1] || '') + ')').join('; ')}. Métrica principal: F1 macro medio entre conjuntos; secundaria: exactitud. Subconjunto = ${SUB().join(' y ')} con 3 pliegues; completo = todos con 5 pliegues.`;
+const REGLAS_CODIGO = `Reglas del código:
+- Define exactamente una función build_model() que devuelve un estimador de scikit-learn 1.4 NO entrenado, con fit y predict.
+- Solo puedes importar de sklearn, numpy, scipy y math, y los imports van DENTRO de build_model.
+- El mismo método para todos los conjuntos (no mires los datos, no ajustes por conjunto). Pon random_state=0 donde exista y n_jobs=1.
+- Nada de ficheros, red ni búsquedas de hiperparámetros largas (GridSearchCV como mucho con 4 combinaciones y cv=3).
+- Debe entrenar en menos de 5 segundos por pliegue en conjuntos de unos 2.000 × 64.`;
+
+async function evalua(codigo, cual, etiqueta){
+  const cj = cual === 'sub' ? SUB() : FULL(), pl = cual === 'sub' ? 3 : 5;
+  consola(null, `Ejecutando ${etiqueta} en ${cual === 'sub' ? 'el subconjunto' : 'el benchmark completo'} (${cj.length} conjuntos, ${pl} pliegues)…`);
+  const t0 = performance.now(); const r = await Py.evalua(codigo, cj, pl, [0]);
+  log('Motor de Python', `${etiqueta} · ${cual}: ${r.ok ? 'F1 ' + r.media.f1.toFixed(4) : r.error} (${((performance.now() - t0) / 1000).toFixed(0)} s)`);
+  return r;
+}
+
+/* §3.1 · limitaciones y semillas */
+async function etapaLimitaciones(){
+  consola('Extractor de limitaciones', 'Buscando las limitaciones del método de referencia…', .08);
+  let ex = await agente('Extractor de limitaciones', `Eres un investigador sénior en aprendizaje automático. Identificas limitaciones CONCRETAS y accionables del método de referencia para el problema dado, apoyándote en sus resultados reales por conjunto.`, `${contexto()}\n\nRESULTADOS DE LA REFERENCIA (benchmark completo): ${resumenRes(R.base.full)}\n\nDevuelve {"limitaciones":[{"texto":"...","evidencia":"qué resultado o propiedad lo sugiere"}]} (entre 4 y 6).`);
+  R.limit = ex.limitaciones || []; log('Extractor de limitaciones', `${R.limit.length} limitaciones`);
+  for(let i = 0; i < 2; i++){
+    const v = await agente('Verificador de limitaciones', `Compruebas si una lista de limitaciones basta para guiar mejoras nuevas del método. Eres exigente con las vaguedades.`, `${contexto()}\n\nLIMITACIONES:\n${R.limit.map((l,k) => `${k + 1}. ${l.texto}`).join('\n')}\n\nDevuelve {"suficiente":true|false,"faltan":["limitación que falta"],"comentario":"..."}`);
+    log('Verificador de limitaciones', v.suficiente ? 'suficientes' : `faltan ${v.faltan?.length || 0}`);
+    if(v.suficiente || !(v.faltan || []).length) break;
+    (v.faltan || []).slice(0, 3).forEach(t => R.limit.push({texto:t, evidencia:'Añadida por el verificador', anadida:true}));
+  }
+  pintaIdeas();
+}
+async function etapaIdeas(){
+  consola('Generador de ideas', 'Generando ideas que resuelvan esas limitaciones…', .14);
+  const g = await agente('Generador de ideas', `Eres un investigador creativo pero riguroso. Propones ideas de MÉTODO distintas entre sí, cada una dirigida a una limitación, implementables con scikit-learn en una función.`, `${contexto()}\n\nLIMITACIONES:\n${R.limit.map((l,k) => `L${k + 1}. ${l.texto}`).join('\n')}\n\nPropón ${R.cfg.nSeed} ideas. Devuelve {"ideas":[{"titulo":"...","hipotesis":"por qué debería mejorar","limitacion":"L2","componentes":["pieza 1","pieza 2"],"consulta":"búsqueda en inglés para localizar trabajos parecidos"}]}`, 3000);
+  R.ideas = (g.ideas || []).slice(0, R.cfg.nSeed).map((x,i) => ({...x, id:'I' + (i + 1), origen:'semilla', estado:'pend'}));
+  consola('Comprobador de novedad', 'Buscando en OpenAlex los trabajos más parecidos a cada idea…', .18);
+  for(const it of R.ideas){ it.cercanos = await openalex(it.consulta || it.titulo, 4); }
+  const nv = await agente('Comprobador de novedad', `Evalúas la novedad de ideas de investigación frente a trabajos existentes REALES que se te dan. 10 = nada parecido publicado; 1 = ya está hecho tal cual. Justifica citando los trabajos.`, R.ideas.map(it => `### ${it.id}: ${it.titulo}\n${it.hipotesis}\nTrabajos cercanos (OpenAlex): ${it.cercanos.map(c => `«${c.titulo}» (${c.anio})`).join('; ') || 'ninguno encontrado'}`).join('\n\n') + '\n\nDevuelve {"puntuaciones":[{"id":"I1","novedad":7,"justificacion":"..."}]}');
+  (nv.puntuaciones || []).forEach(p => { const it = R.ideas.find(x => x.id === p.id); if(it){ it.novedad = +p.novedad || 0; it.justif = p.justificacion || ''; } });
+  R.ideas.sort((a,b) => (b.novedad || 0) - (a.novedad || 0));
+  log('Comprobador de novedad', R.ideas.map(x => `${x.id}=${x.novedad}`).join(', '));
+  pintaIdeas();
+}
+
+/* §3.2 · ACoder: subconjunto → crítico → ingeniería → completo */
+async function programa(agenteNom, idea, extra){
+  const r = await agente(agenteNom, `Eres un ingeniero de aprendizaje automático. Implementas la idea como código de scikit-learn.\n${REGLAS_CODIGO}`, `${contexto()}\n\nIDEA: ${idea.titulo}\n${idea.hipotesis}\nComponentes: ${(idea.componentes || []).join(', ')}\n${extra || ''}\n\nDevuelve {"codigo":"def build_model():\\n    ...","componentes":["..."],"explicacion":"una frase"}`, 2500);
+  let c = String(r.codigo || '').replace(/^```(?:python)?|```$/g, '').trim();
+  return {codigo:c, componentes:r.componentes || idea.componentes || [], explicacion:r.explicacion || ''};
+}
+async function critico(nombre, fase, traza, resIdea, resBase){
+  const gan = f1(resIdea) - f1(resBase);
+  const peores = Object.entries(resIdea.por_conjunto).filter(([k,v]) => resBase.por_conjunto[k] && v.f1 < resBase.por_conjunto[k].f1 - 0.02).map(([k]) => k);
+  const r = await agente(nombre, `Eres el crítico de experimentos. Decides si una idea: "bad" (claramente inferior o sin recorrido), "good" (supera a la referencia de forma consistente) o "engineer" (tiene potencial pero necesita ajustes de hiperparámetros o de código). Si pides "engineer", da una estrategia concreta.`, `${contexto()}\n\nIDEA: ${traza.titulo}\nCÓDIGO:\n${traza.codigo}\n\nREFERENCIA (${fase}): ${resumenRes(resBase)}\nIDEA (${fase}): ${resumenRes(resIdea)}\nGanancia en F1 medio: ${(gan * 100).toFixed(2)} puntos.${peores.length ? ' Empeora en: ' + peores.join(', ') : ''}\n\nDevuelve {"decision":"good|bad|engineer","feedback":"..."}`);
+  let d = ['good','bad','engineer'].includes(r.decision) ? r.decision : 'engineer';
+  /* salvaguarda determinista: no se da por buena una idea que no mejora; lo muy inferior se descarta */
+  if(d === 'good' && !(gan > 0)){ d = 'engineer'; r.feedback = `(Corregido por la regla: la ganancia es ${(gan * 100).toFixed(2)} puntos, no positiva.) ` + (r.feedback || ''); }
+  if(gan < -0.02 && d !== 'bad'){ d = 'bad'; r.feedback = `(Corregido por la regla: más de 2 puntos por debajo de la referencia.) ` + (r.feedback || ''); }
+  return {decision:d, feedback:r.feedback || '', ganancia:gan};
+}
+async function acoder(idea, ronda){
+  const tz = {id:'T' + (R.trazas.length + 1), ideaId:idea.id, titulo:idea.titulo, hipotesis:idea.hipotesis, origen:idea.origen, ronda, estado:'running', pasos:[]};
+  R.trazas.push(tz); idea.estado = 'running'; pintaExp(); sigue(4);
+  let p = await programa('Programador de subconjunto', idea); tz.codigo = p.codigo; tz.componentes = p.componentes;
+  const intento = async (fase) => {
+    for(let k = 0; k <= R.cfg.nEng; k++){
+      const err = revisaCodigo(tz.codigo);
+      const res = err ? {ok:false, error:err} : await evalua(tz.codigo, fase, tz.id);
+      tz[fase] = res; pintaExp();
+      if(!res.ok){
+        tz.pasos.push({fase, tipo:'error', texto:res.error});
+        if(k === R.cfg.nEng) return {decision:'bad', feedback:'El código falló: ' + res.error};
+        p = await programa('Ingeniero', idea, `CÓDIGO ANTERIOR:\n${tz.codigo}\nERROR AL EJECUTAR:\n${res.error}\nCorrígelo sin cambiar la idea.`); tz.codigo = p.codigo; continue;
+      }
+      const c = await critico(fase === 'sub' ? 'Crítico de subconjunto' : 'Crítico de conjunto completo', fase === 'sub' ? 'subconjunto' : 'completo', tz, res, R.base[fase]);
+      tz.pasos.push({fase, tipo:c.decision, texto:c.feedback, ganancia:c.ganancia}); log(fase === 'sub' ? 'Crítico de subconjunto' : 'Crítico de conjunto completo', `${tz.id} ${c.decision} (${(c.ganancia * 100).toFixed(2)} pp)`);
+      if(c.decision !== 'engineer' || k === R.cfg.nEng) return c.decision === 'engineer' ? {decision:'bad', feedback:'Agotado el presupuesto de ajuste. ' + c.feedback} : c;
+      p = await programa('Ingeniero', idea, `CÓDIGO ACTUAL:\n${tz.codigo}\nRESULTADOS: ${resumenRes(res)}\nESTRATEGIA DEL CRÍTICO: ${c.feedback}\nAplica la estrategia manteniendo la idea.`); tz.codigo = p.codigo; tz.componentes = p.componentes;
+    }
+  };
+  let d = await intento('sub');
+  if(d.decision === 'good'){ marcaAgente('Programador de conjunto completo'); d = await intento('full'); }
+  tz.estado = d.decision; tz.feedback = d.feedback; idea.estado = d.decision; pintaExp(); pintaIdeas();
+  return tz;
+}
+/* §3.3 · evolución y selección */
+async function etapaExperimentos(){
+  const buenas = () => R.trazas.filter(t => t.estado === 'good');
+  for(const it of R.ideas.slice(0, R.cfg.n0)){ if(R.parar) break; await acoder(it, 0); }
+  for(let k = 1; k <= R.cfg.K && !R.parar; k++){
+    consola('Evolucionador de ideas', `Ronda de evolución ${k}: aprendiendo de ${R.trazas.length} ejecuciones…`, .45);
+    const ev = await agente('Evolucionador de ideas', `Analizas las ejecuciones anteriores (éxitos y fracasos, con sus resultados reales) y propones ideas EVOLUCIONADAS que combinen lo que funcionó y eviten lo que falló.`, `${contexto()}\n\nEJECUCIONES:\n${R.trazas.map(t => `- ${t.titulo} [${t.estado}] subconjunto: ${resumenRes(t.sub)} | completo: ${resumenRes(t.full)} | crítico: ${t.feedback}\n  código: ${(t.codigo || '').replace(/\n/g, ' ').slice(0, 400)}`).join('\n')}\n\nPropón 2 ideas. Devuelve {"ideas":[{"titulo":"...","hipotesis":"qué aprendes de las ejecuciones y por qué mejorará","componentes":["..."]}]}`);
+    const nuevas = (ev.ideas || []).slice(0, 2).map((x,i) => ({...x, id:`E${k}.${i + 1}`, origen:'evolución', estado:'pend', novedad:null}));
+    R.ideas.push(...nuevas); pintaIdeas();
+    const pend = R.ideas.filter(x => x.origen === 'semilla' && x.estado === 'pend').slice(0, 1);
+    for(const it of [...nuevas, ...pend]){ if(R.parar) break; await acoder(it, k); }
+    if(buenas().length >= 2) break;
+  }
+  if(!buenas().length){ log('Selector', 'Ninguna idea supera a la referencia: se detiene la investigación, como en el artículo.'); return false; }
+  consola('Selector', 'Eligiendo la mejor idea en el benchmark completo…', .55);
+  const b = buenas().sort((a,b) => f1(b.full) - f1(a.full))[0];
+  R.best = {trazaId:b.id, titulo:b.titulo, codigo:b.codigo, componentes:b.componentes, full:b.full, historial:[]};
+  log('Selector', `${b.id}: F1 ${f1(b.full).toFixed(4)} (${dpp(f1(b.full) - f1(R.base.full))} pp)`); pintaExp();
+  return true;
+}
+/* §3.4 · ablaciones y refinamiento verificado */
+async function etapaAblaciones(){
+  sigue(5);
+  for(let vuelta = 0; vuelta <= 1 && !R.parar; vuelta++){
+    consola('Planificador de ablaciones', 'Diseñando qué componente quitar en cada experimento…', .62);
+    const pl = await agente('Planificador de ablaciones', `Diseñas ablaciones: cada una quita o simplifica UN componente del método para medir su aportación.`, `${contexto()}\n\nMÉTODO FINAL:\n${R.best.codigo}\nComponentes: ${(R.best.componentes || []).join(', ')}\n\nDevuelve {"planes":[{"nombre":"Sin X","componente":"X","hipotesis":"qué esperas"}]} (entre 2 y 3).`);
+    R.abl = {planes:(pl.planes || []).slice(0, 3).map(x => ({...x})), critica:null, refinado:null}; pintaAbl();
+    for(const p of R.abl.planes){
+      if(R.parar) break;
+      const c = await agente('Programador de ablaciones', `Modificas el código para quitar exactamente un componente, sin tocar nada más.\n${REGLAS_CODIGO}`, `CÓDIGO:\n${R.best.codigo}\n\nABLACIÓN: ${p.nombre} (quitar: ${p.componente})\nDevuelve {"codigo":"def build_model(): ..."}`);
+      p.codigo = String(c.codigo || '').replace(/^```(?:python)?|```$/g, '').trim();
+      const err = revisaCodigo(p.codigo); p.res = err ? {ok:false, error:err} : await evalua(p.codigo, 'full', p.nombre); pintaAbl();
+    }
+    const cr = await agente('Crítico de ablaciones', `Inspeccionas el desglose por componentes. "good" si el método es óptimo; "refine" si un componente sobra, perjudica o puede mejorarse, con una propuesta concreta.`, `MÉTODO: ${resumenRes(R.best.full)}\nREFERENCIA: ${resumenRes(R.base.full)}\nABLACIONES:\n${R.abl.planes.map(p => `- ${p.nombre}: ${resumenRes(p.res)}`).join('\n')}\n\nDevuelve {"decision":"good|refine","feedback":"...","lectura":"qué aporta cada componente, en dos frases"}`);
+    R.abl.critica = cr; log('Crítico de ablaciones', cr.decision); pintaAbl();
+    if(cr.decision !== 'refine' || vuelta === 1) break;
+    const nuevo = await programa('Ingeniero', {titulo:R.best.titulo, hipotesis:'Refinamiento guiado por las ablaciones', componentes:R.best.componentes}, `CÓDIGO ACTUAL:\n${R.best.codigo}\nCRÍTICA DE LAS ABLACIONES: ${cr.feedback}\nAplica el refinamiento.`);
+    const err = revisaCodigo(nuevo.codigo); const res = err ? {ok:false, error:err} : await evalua(nuevo.codigo, 'full', 'refinado');
+    const mejor = res.ok && f1(res.full || res) > f1(R.best.full);
+    marcaAgente('Comparador de resultados');
+    R.abl.refinado = {codigo:nuevo.codigo, res, aceptado:!!(res.ok && res.media.f1 > R.best.full.media.f1)};
+    log('Comparador de resultados', R.abl.refinado.aceptado ? `refinado aceptado (${res.media.f1.toFixed(4)})` : 'refinado rechazado: no es estrictamente mejor');
+    if(!R.abl.refinado.aceptado){ pintaAbl(); break; }
+    R.best.historial.push({codigo:R.best.codigo, full:R.best.full}); R.best.codigo = nuevo.codigo; R.best.full = res; R.best.componentes = nuevo.componentes; pintaAbl();
+  }
+}
+/* §3.5 · borrador con tablas reales, revisión y réplica con experimentos */
+const nD = (v, d = 4) => { const s = v.toFixed(d); return R.cfg.lang === 'en' ? s : s.replace('.', ','); };
+function tablaPrincipal(){
+  const ks = Object.keys(R.best.full.por_conjunto);
+  return `| Conjunto | Referencia F1 | Método F1 | Diferencia | Referencia exactitud | Método exactitud |\n|---|---|---|---|---|---|\n` + ks.map(k => { const b = R.base.full.por_conjunto[k], m = R.best.full.por_conjunto[k]; return `| ${DS[k]?.[0] || k} | ${nD(b.f1)} ± ${nD(b.f1_sd)} | ${nD(m.f1)} ± ${nD(m.f1_sd)} | ${dpp(m.f1 - b.f1)} | ${nD(b.acc)} | ${nD(m.acc)} |`; }).join('\n') + `\n| **Media** | **${nD(R.base.full.media.f1)}** | **${nD(R.best.full.media.f1)}** | **${dpp(R.best.full.media.f1 - R.base.full.media.f1)}** | **${nD(R.base.full.media.acc)}** | **${nD(R.best.full.media.acc)}** |`;
+}
+function tablaAblacion(){ return `| Variante | F1 medio | Diferencia con el método |\n|---|---|---|\n| Método completo | ${nD(R.best.full.media.f1)} | — |\n` + (R.abl?.planes || []).filter(p => p.res?.ok).map(p => `| ${p.nombre} | ${nD(p.res.media.f1)} | ${dpp(p.res.media.f1 - R.best.full.media.f1)} |`).join('\n') + `\n| Referencia | ${nD(R.base.full.media.f1)} | ${dpp(R.base.full.media.f1 - R.best.full.media.f1)} |`; }
+function tablaIdeas(){ return `| Idea | Origen | Subconjunto F1 | Completo F1 | Decisión |\n|---|---|---|---|---|\n` + R.trazas.map(t => `| ${t.titulo} | ${t.origen} | ${t.sub?.ok ? nD(t.sub.media.f1) : '—'} | ${t.full?.ok ? nD(t.full.media.f1) : '—'} | ${({good:'buena',bad:'descartada',engineer:'ajuste'})[t.estado] || t.estado} |`).join('\n'); }
+function tablaSuplementaria(){ return R.replica.filter(x => x.tabla).map(x => `**${x.titulo}**\n\n${x.tabla}`).join('\n\n'); }
+function numerosPermitidos(){
+  const s = new Set(); const add = v => { if(v == null || !isFinite(v)) return; [2,3,4].forEach(d => { s.add(v.toFixed(d)); s.add((v * 100).toFixed(Math.max(0, d - 2))); s.add((v * 100).toFixed(d - 1)); }); };
+  const res = [R.base.sub, R.base.full, R.best.full, ...R.trazas.flatMap(t => [t.sub, t.full]), ...(R.abl?.planes || []).map(p => p.res), ...R.replica.flatMap(x => x.res || [])];
+  res.forEach(r => { if(!r?.ok) return; add(r.media.f1); add(r.media.acc); Object.values(r.por_conjunto).forEach(v => { add(v.f1); add(v.acc); add(v.bal); add(v.f1_sd); }); add(r.media.f1 - R.base.full.media.f1); });
+  if(R.best?.full) Object.keys(R.best.full.por_conjunto).forEach(k => add(R.best.full.por_conjunto[k].f1 - R.base.full.por_conjunto[k].f1));
+  (R.abl?.planes || []).forEach(p => p.res?.ok && add(p.res.media.f1 - R.best.full.media.f1));
+  return s;
+}
+function compruebaNumeros(md){
+  const ok = numerosPermitidos(), prosa = md.split('\n').filter(l => !/^\s*\|/.test(l)).join('\n'), malos = [];
+  for(const m of prosa.matchAll(/(?<![\w.])\d+[.,]\d{2,4}(?![\d])/g)){ const v = m[0].replace(',', '.'); if(!ok.has(v) && !ok.has((+v).toFixed(2)) && !ok.has((+v).toFixed(3))) malos.push(m[0]); }
+  return [...new Set(malos)];
+}
+async function redacta(agenteNom, instr){
+  const lang = LANGS[R.cfg.lang];
+  const r = await agente(agenteNom, `Eres el redactor de un artículo de conferencia de aprendizaje automático. Escribes en ${lang}, con rigor y sin exagerar. NUNCA escribas cifras que no estén en los resultados dados; para las tablas usa EXACTAMENTE los marcadores {{TABLA_PRINCIPAL}}, {{TABLA_ABLACION}}, {{TABLA_IDEAS}} y {{TABLA_SUPLEMENTARIA}}, que la aplicación sustituye por las tablas reales. Declara las limitaciones con honestidad: es un benchmark pequeño.`, `${contexto()}\n\nMÉTODO FINAL:\n${R.best.codigo}\nRESULTADOS: método ${resumenRes(R.best.full)} | referencia ${resumenRes(R.base.full)}\nABLACIONES: ${(R.abl?.planes || []).map(p => `${p.nombre}: ${resumenRes(p.res)}`).join(' || ')}\nLECTURA DE LAS ABLACIONES: ${R.abl?.critica?.lectura || ''}\nEXPERIMENTOS SUPLEMENTARIOS: ${R.replica.map(x => `${x.titulo}: ${x.resumen}`).join(' || ') || 'ninguno'}\n${instr}\n\nDevuelve {"markdown":"# Título\\n\\n## Resumen\\n..."}`, 4500);
+  return String(r.markdown || '');
+}
+const pintaPaperMd = md => md.replace('{{TABLA_PRINCIPAL}}', tablaPrincipal()).replace('{{TABLA_ABLACION}}', tablaAblacion()).replace('{{TABLA_IDEAS}}', tablaIdeas()).replace('{{TABLA_SUPLEMENTARIA}}', tablaSuplementaria() || '');
+async function revisa(){
+  const r = await agente('Revisor', `Eres un revisor exigente de ICLR. Puntúas de 1 a 10 (escala de ICLR) un artículo cuyos resultados son reales pero de pequeña escala. Valoras rigor, honestidad y alcance de las afirmaciones.`, `ARTÍCULO:\n${pintaPaperMd(R.papel).slice(0, 14000)}\n\nDevuelve {"puntuacion":6,"resumen":"...","fortalezas":["..."],"debilidades":["..."],"preguntas":["..."]}`, 2500);
+  const rv = {puntuacion:+r.puntuacion || 0, resumen:r.resumen || '', fortalezas:r.fortalezas || [], debilidades:r.debilidades || [], preguntas:r.preguntas || []};
+  R.revisiones.push(rv); log('Revisor', `puntuación ${rv.puntuacion}/10`); pintaRev(); return rv;
+}
+const REPLICAS = {
+  semillas:{titulo:'Robustez frente a la partición: tres semillas de validación cruzada', corre:async () => [await Py.evalua(R.base.codigo || R.base_code, FULL(), 5, [0,1,2]), await Py.evalua(R.best.codigo, FULL(), 5, [0,1,2])]},
+  ruido:{titulo:'Conjunto adicional con un 20 % de etiquetas ruidosas', corre:async () => [await Py.evalua(R.base_code, ['ruidoso'], 5, [0]), await Py.evalua(R.best.codigo, ['ruidoso'], 5, [0])]},
+  metrica:{titulo:'Exactitud equilibrada', corre:async () => [R.base.full, R.best.full]},
+  coste:{titulo:'Coste de entrenamiento por pliegue', corre:async () => [R.base.full, R.best.full]},
+};
+function tablaReplica(tipo, [b, m]){
+  if(!b?.ok || !m?.ok) return {tabla:'', resumen:'no se pudo ejecutar'};
+  const campo = tipo === 'metrica' ? 'bal' : tipo === 'coste' ? 'seg' : 'f1', nom = {bal:'Exactitud equilibrada', seg:'Segundos por pliegue', f1:'F1 macro'}[campo], fmt = v => nD(v, campo === 'seg' ? 3 : 4);
+  const filas = Object.keys(m.por_conjunto).map(k => `| ${DS[k]?.[0] || (k === 'ruidoso' ? 'Ruidoso (20 % de etiquetas cambiadas)' : k)} | ${fmt(b.por_conjunto[k][campo])} | ${fmt(m.por_conjunto[k][campo])} |`).join('\n');
+  return {tabla:`| Conjunto | Referencia (${nom}) | Método (${nom}) |\n|---|---|---|\n${filas}\n| **Media** | **${fmt(b.media[campo])}** | **${fmt(m.media[campo])}** |`, resumen:`${nom}: referencia ${fmt(b.media[campo])}, método ${fmt(m.media[campo])}`};
+}
+async function etapaArticulo(){
+  sigue(6);
+  consola('Redactor', 'Redactando el borrador con las tablas reales…', .72);
+  R.papel = await redacta('Redactor', 'Escribe el artículo completo: Resumen, 1. Introducción, 2. Método, 3. Configuración experimental, 4. Resultados ({{TABLA_PRINCIPAL}} y {{TABLA_IDEAS}}), 5. Ablaciones ({{TABLA_ABLACION}}), 6. Limitaciones, 7. Conclusión.');
+  R.avisosNum = compruebaNumeros(R.papel); pintaRev();
+  let rv = await revisa();
+  for(let k = 0; k < R.cfg.nRev && rv.puntuacion < R.cfg.umbral && !R.parar; k++){
+    consola('Planificador de la réplica', `Nota ${rv.puntuacion} < ${R.cfg.umbral}: planificando experimentos para responder al revisor…`, .8);
+    const pl = await agente('Planificador de la réplica', `Eliges experimentos suplementarios que respondan a las críticas del revisor. Solo puedes elegir de este menú: "semillas" (repetir con 3 semillas de validación cruzada), "ruido" (conjunto adicional con etiquetas ruidosas), "metrica" (exactitud equilibrada), "coste" (tiempo de entrenamiento).`, `REVISIÓN: ${JSON.stringify(rv)}\nYA EJECUTADOS: ${R.replica.map(x => x.tipo).join(', ') || 'ninguno'}\n\nDevuelve {"tareas":[{"tipo":"semillas","motivo":"qué crítica responde"}]} (1 a 3, sin repetir los ya ejecutados).`);
+    for(const t of (pl.tareas || []).filter(t => REPLICAS[t.tipo] && !R.replica.some(x => x.tipo === t.tipo)).slice(0, 3)){
+      consola('Programador de la réplica', `Ejecutando: ${REPLICAS[t.tipo].titulo}…`);
+      const res = await REPLICAS[t.tipo].corre(); const tb = tablaReplica(t.tipo, res);
+      R.replica.push({tipo:t.tipo, motivo:t.motivo, titulo:REPLICAS[t.tipo].titulo, res, ...tb}); log('Programador de la réplica', `${t.tipo}: ${tb.resumen}`); pintaRev();
+    }
+    consola('Mejorador del borrador', 'Incorporando la revisión y los experimentos nuevos…', .86);
+    R.papel = await redacta('Mejorador del borrador', `BORRADOR ACTUAL:\n${R.papel}\n\nREVISIÓN: ${JSON.stringify(rv)}\n\nReescribe el artículo respondiendo a la revisión: incorpora los experimentos suplementarios en una sección nueva con {{TABLA_SUPLEMENTARIA}} y matiza las afirmaciones que los resultados no sostengan (si un experimento es desfavorable, dilo).`);
+    R.avisosNum = compruebaNumeros(R.papel); pintaRev();
+    rv = await revisa();
+  }
+}
+/* §3.6 · metarrevisión */
+async function etapaMeta(){
+  consola('Metarrevisor', 'Decisión final sobre el artículo…', .93);
+  const m = await agente('Metarrevisor', `Eres el metarrevisor (área chair). Con el artículo y la última revisión, decides "accept" si cumple el listón de una conferencia de primer nivel para su escala, o "refine" si hay una debilidad algorítmica o empírica crítica, explicando cuál.`, `ARTÍCULO:\n${pintaPaperMd(R.papel).slice(0, 12000)}\n\nÚLTIMA REVISIÓN: ${JSON.stringify(R.revisiones[R.revisiones.length - 1])}\n\nDevuelve {"decision":"accept|refine","critica":"..."}`);
+  R.meta = {decision:m.decision === 'accept' ? 'accept' : 'refine', critica:m.critica || ''}; log('Metarrevisor', R.meta.decision); pintaRev();
+}
+
+/* ══════════ ORQUESTACIÓN ══════════ */
+function leeCfg(){
+  if(R.modo === 'lab') return {nSeed:+$('cSeed').value || 5, n0:+$('cN0').value || 3, nEng:+$('cEng').value, K:+$('cK').value, umbral:+$('cUmbral').value || 7, nRev:+$('cRev').value, lang:$('cLang').value};
+  return {nSeed:+$('pSeed').value || 5, n0:+$('pN0').value || 3, nEng:1, umbral:+$('pUmbral').value || 7, nRev:+$('pRev').value, lang:$('pLang').value};
+}
+async function iniciar(){
+  if(!localStorage.getItem('ia_openai_key')){ toast('Pega antes tu clave'); return go(1); }
+  if(R.estado === 'running') return go(3);
+  if(R.estado === 'done' && !confirm('¿Empezar una investigación nueva? Se sustituye la actual.')) return;
+  const modo = R.modo, csv = R.csv; R = R0(); R.modo = modo; R.csv = csv; R.cfg = leeCfg();
+  if(modo === 'lab'){
+    R.problema = $('labProblema').value.trim() || LAB_PROBLEMA; R.base_code = $('labBase').value.trim() || BASE_CODE;
+    R.conjuntos = $$('#dsChecks input:checked').map(i => i.value); if(csv && csv.objetivo) R.conjuntos.push('propio');
+    if(R.conjuntos.length < 2) return toast('Elige al menos 2 conjuntos');
+    const e = revisaCodigo(R.base_code); if(e) return toast('El método de referencia: ' + e);
+  } else {
+    R.prop = {disc:$('pDisc').value.trim(), problema:$('pProblema').value.trim(), sota:$('pSota').value.trim()};
+    if(!R.prop.problema) return toast('Describe el problema de investigación');
+  }
+  R.estado = 'running'; seguir = true; $('btnStop').style.display = ''; $('cLog').innerHTML = ''; $('cSpin').style.display = ''; go(3); pintaMapa();
+  try{
+    if(modo === 'lab'){
+      consola('Programador de la referencia', 'Arrancando el motor de Python (la primera vez tarda)…', .02);
+      await Py.arrancar();
+      marcaAgente('Programador de la referencia');
+      R.base = {codigo:R.base_code, sub:await evalua(R.base_code, 'sub', 'referencia'), full:null};
+      if(!R.base.sub.ok) throw new Error('La referencia no se ejecuta: ' + R.base.sub.error);
+      R.base.full = await evalua(R.base_code, 'full', 'referencia'); if(!R.base.full.ok) throw new Error('La referencia falla en el benchmark completo: ' + R.base.full.error);
+      pintaExp();
+      await etapaLimitaciones(); await etapaIdeas();
+      const hay = await etapaExperimentos();
+      if(hay && !R.parar){ await etapaAblaciones(); await etapaArticulo(); if(!R.parar) await etapaMeta(); }
+    } else await cicloPropuesta();
+    R.estado = 'done'; consola('Terminado', R.parar ? 'Detenida por la persona: se conserva lo hecho.' : `Investigación completa · ${R.consultas} consultas · ${R.tokens.toLocaleString('es')} tokens`, 1);
+    toast(R.parar ? 'Investigación detenida' : 'Investigación completa');
+  }catch(e){
+    R.estado = 'done'; const parado = e.message === 'PARADO';
+    consola(parado ? 'Detenida' : 'Error', parado ? 'Detenida por la persona: se conserva lo hecho.' : e.message); log('Sistema', e.message); if(!parado) toast(e.message, 7000);
+  }finally{ $('btnStop').style.display = 'none'; $('cSpin').style.display = 'none'; R.agenteActual = null; pintaMapa(); pintaTodo(); updateNav(); }
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   MODO PROPUESTA: el mismo ciclo sin ejecución
+   ══════════════════════════════════════════════════════════ */
+const ctxProp = () => `DISCIPLINA: ${R.prop.disc || '(no indicada)'}\nPROBLEMA: ${R.prop.problema}\nESTADO DEL ARTE (trabajo de referencia):\n${R.prop.sota || '(no aportado)'}`;
+async function cicloPropuesta(){
+  const lang = LANGS[R.cfg.lang];
+  consola('Extractor de limitaciones', 'Buscando las limitaciones del estado del arte…', .08);
+  const ex = await agente('Extractor de limitaciones', `Eres un investigador sénior en ${R.prop.disc || 'la disciplina'}. Identificas limitaciones concretas y accionables del estado del arte. Escribe en ${lang}.`, `${ctxProp()}\n\nDevuelve {"limitaciones":[{"texto":"...","evidencia":"..."}]} (4 a 6).`);
+  R.limit = ex.limitaciones || [];
+  const v = await agente('Verificador de limitaciones', `Compruebas si las limitaciones bastan para guiar mejoras nuevas. Escribe en ${lang}.`, `${ctxProp()}\n\nLIMITACIONES:\n${R.limit.map((l,k) => `${k + 1}. ${l.texto}`).join('\n')}\n\nDevuelve {"suficiente":true|false,"faltan":["..."]}`);
+  if(!v.suficiente) (v.faltan || []).slice(0, 3).forEach(t => R.limit.push({texto:t, evidencia:'Añadida por el verificador', anadida:true}));
+  pintaIdeas();
+  consola('Generador de ideas', 'Generando ideas…', .18);
+  const g = await agente('Generador de ideas', `Propones ideas de investigación distintas entre sí, cada una dirigida a una limitación, viables para un grupo universitario. Escribe en ${lang}.`, `${ctxProp()}\n\nLIMITACIONES:\n${R.limit.map((l,k) => `L${k + 1}. ${l.texto}`).join('\n')}\n\nPropón ${R.cfg.nSeed} ideas. Devuelve {"ideas":[{"titulo":"...","hipotesis":"...","limitacion":"L1","componentes":["..."],"consulta":"búsqueda en inglés"}]}`, 3000);
+  R.ideas = (g.ideas || []).slice(0, R.cfg.nSeed).map((x,i) => ({...x, id:'I' + (i + 1), origen:'semilla', estado:'pend'}));
+  consola('Comprobador de novedad', 'Buscando en OpenAlex los trabajos más parecidos…', .26);
+  for(const it of R.ideas) it.cercanos = await openalex(it.consulta || it.titulo, 4);
+  const nv = await agente('Comprobador de novedad', `Evalúas la novedad de cada idea frente a trabajos REALES dados (10 = nada parecido publicado). Justifica citándolos. Escribe en ${lang}.`, R.ideas.map(it => `### ${it.id}: ${it.titulo}\n${it.hipotesis}\nTrabajos cercanos: ${it.cercanos.map(c => `«${c.titulo}» (${c.anio}): ${c.resumen.slice(0, 200)}`).join(' | ') || 'ninguno'}`).join('\n\n') + '\n\nDevuelve {"puntuaciones":[{"id":"I1","novedad":7,"justificacion":"..."}]}');
+  (nv.puntuaciones || []).forEach(p => { const it = R.ideas.find(x => x.id === p.id); if(it){ it.novedad = +p.novedad || 0; it.justif = p.justificacion || ''; } });
+  R.ideas.sort((a,b) => (b.novedad || 0) - (a.novedad || 0)); pintaIdeas();
+  sigue(4);
+  for(const it of R.ideas.slice(0, R.cfg.n0)){
+    if(R.parar) break;
+    const tz = {id:'T' + (R.trazas.length + 1), ideaId:it.id, titulo:it.titulo, origen:'semilla', estado:'running', pasos:[]}; R.trazas.push(tz); pintaExp();
+    let fb = '';
+    for(let k = 0; k <= R.cfg.nEng; k++){
+      const d = await agente('Programador de subconjunto', `Diseñas el plan experimental de una idea: primero un PILOTO pequeño (el «subconjunto» de ScientistTwo) y, si funciona, el ESTUDIO COMPLETO. Sé concreto: población, muestra, variables, métricas, análisis y criterio de éxito. Escribe en ${lang}.`, `${ctxProp()}\n\nIDEA: ${it.titulo}\n${it.hipotesis}\n${fb ? 'CRÍTICA ANTERIOR: ' + fb : ''}\n\nDevuelve {"pregunta":"...","hipotesis":"...","piloto":"...","estudio_completo":"...","variables":["..."],"metricas":["..."],"analisis":"...","criterio_exito":"...","riesgos":["..."]}`, 2500);
+      tz.diseno = d; pintaExp();
+      const c = await agente('Crítico de subconjunto', `Eres un revisor metodológico. Juzgas la PLAUSIBILIDAD y la validez del diseño (no hay resultados): "good" si es sólido y viable, "bad" si la idea no se sostiene, "engineer" si se puede arreglar (di cómo). Escribe en ${lang}.`, `${ctxProp()}\n\nDISEÑO:\n${JSON.stringify(d)}\n\nDevuelve {"decision":"good|bad|engineer","feedback":"..."}`);
+      tz.pasos.push({fase:'diseño', tipo:c.decision, texto:c.feedback}); fb = c.feedback;
+      if(c.decision !== 'engineer' || k === R.cfg.nEng){ tz.estado = c.decision === 'engineer' ? 'bad' : c.decision; tz.feedback = c.feedback; break; }
+    }
+    it.estado = tz.estado; pintaExp(); pintaIdeas();
+  }
+  const buenas = R.trazas.filter(t => t.estado === 'good');
+  if(!buenas.length){ log('Selector', 'Ningún diseño supera la crítica: se detiene.'); return; }
+  let bi = 0;
+  if(buenas.length > 1){ const s = await agente('Selector', `Eliges el diseño más prometedor por impacto, novedad y viabilidad. Escribe en ${lang}.`, buenas.map((t,i) => `${i}: ${t.titulo} — ${JSON.stringify(t.diseno).slice(0, 700)}`).join('\n') + '\n\nDevuelve {"indice":0,"motivo":"..."}'); bi = Math.max(0, Math.min(buenas.length - 1, +s.indice || 0)); R.selMotivo = s.motivo; }
+  const b = buenas[bi]; R.best = {trazaId:b.id, titulo:b.titulo, diseno:b.diseno, historial:[]}; pintaExp();
+  sigue(5);
+  const pl = await agente('Planificador de ablaciones', `Diseñas el plan de ablaciones del estudio: qué componente se quita en cada condición, qué se espera y cómo se medirá. Escribe en ${lang}.`, `${ctxProp()}\n\nDISEÑO ELEGIDO:\n${JSON.stringify(b.diseno)}\n\nDevuelve {"planes":[{"nombre":"Sin X","componente":"X","hipotesis":"...","medida":"..."}]} (2 a 4).`);
+  R.abl = {planes:pl.planes || [], critica:null}; pintaAbl();
+  sigue(6);
+  const refs = R.ideas.flatMap(i => i.cercanos || []).filter((c,i,a) => c.titulo && a.findIndex(x => x.titulo === c.titulo) === i).slice(0, 12);
+  R.refsProp = refs;
+  const redactaP = async (nom, extra) => String((await agente(nom, `Redactas una propuesta de investigación en ${lang}, formal y precisa. Solo puedes citar los trabajos de la lista REFERENCIAS (autor, año); no inventes referencias, datos ni resultados: es una propuesta, los resultados son esperados.`, `${ctxProp()}\n\nLIMITACIONES: ${R.limit.map(l => l.texto).join(' | ')}\nIDEA ELEGIDA: ${b.titulo}\nDISEÑO: ${JSON.stringify(b.diseno)}\nABLACIONES: ${JSON.stringify(R.abl.planes)}\nREFERENCIAS:\n${refs.map(r => `- ${r.autor} (${r.anio}). ${r.titulo}. ${r.revista}. ${r.url}`).join('\n')}\n${extra}\n\nDevuelve {"markdown":"# Título\\n\\n## Resumen\\n..."} con: Resumen, Antecedentes y limitaciones, Objetivo e hipótesis, Metodología (piloto y estudio completo), Plan de ablaciones, Resultados esperados, Riesgos y mitigación, Referencias.`, 4500)).markdown || '');
+  consola('Redactor', 'Redactando la propuesta…', .75);
+  R.papel = await redactaP('Redactor', ''); pintaRev();
+  let rv = await revisaProp();
+  for(let k = 0; k < R.cfg.nRev && rv.puntuacion < R.cfg.umbral && !R.parar; k++){
+    const pl2 = await agente('Planificador de la réplica', `Traduces las críticas del revisor en cambios concretos del diseño (la «réplica» de una propuesta). Escribe en ${lang}.`, `REVISIÓN: ${JSON.stringify(rv)}\n\nDevuelve {"tareas":[{"tipo":"cambio","motivo":"crítica que responde","cambio":"qué se modifica del diseño"}]}`);
+    (pl2.tareas || []).forEach(t => R.replica.push({tipo:'diseño', titulo:t.cambio, motivo:t.motivo, resumen:t.cambio})); pintaRev();
+    consola('Mejorador del borrador', 'Revisando la propuesta…', .88);
+    R.papel = await redactaP('Mejorador del borrador', `PROPUESTA ACTUAL:\n${R.papel}\n\nREVISIÓN: ${JSON.stringify(rv)}\nCAMBIOS ACORDADOS: ${R.replica.map(x => x.titulo).join(' | ')}\nIncorpóralos.`);
+    rv = await revisaProp();
+  }
+  const m = await agente('Metarrevisor', `Eres el metarrevisor de una convocatoria competitiva. "accept" si la propuesta es financiable; "refine" si tiene una debilidad crítica. Escribe en ${lang}.`, `PROPUESTA:\n${R.papel.slice(0, 12000)}\n\nÚLTIMA REVISIÓN: ${JSON.stringify(rv)}\n\nDevuelve {"decision":"accept|refine","critica":"..."}`);
+  R.meta = {decision:m.decision === 'accept' ? 'accept' : 'refine', critica:m.critica || ''}; pintaRev();
+}
+async function revisaProp(){
+  const r = await agente('Revisor', `Eres evaluador de una convocatoria competitiva de investigación. Puntúas de 1 a 10 la propuesta por novedad, rigor metodológico, viabilidad e impacto. Escribe en ${LANGS[R.cfg.lang]}.`, `PROPUESTA:\n${R.papel.slice(0, 14000)}\n\nDevuelve {"puntuacion":6,"resumen":"...","fortalezas":["..."],"debilidades":["..."],"preguntas":["..."]}`, 2500);
+  const rv = {puntuacion:+r.puntuacion || 0, resumen:r.resumen || '', fortalezas:r.fortalezas || [], debilidades:r.debilidades || [], preguntas:r.preguntas || []};
+  R.revisiones.push(rv); pintaRev(); return rv;
+}
+
+/* ══════════════════════════════════════════════════════════
+   PANTALLAS
+   ══════════════════════════════════════════════════════════ */
+const DEC = {good:['good','buena'], bad:['bad','descartada'], engineer:['engineer','en ajuste'], running:['pend','en curso'], pend:['pend','sin probar']};
+function pintaIdeas(){
+  if(!R.limit.length && !R.ideas.length){ $('outIdeas').innerHTML = '<p class="empty">Aún no ha empezado la investigación.</p>'; return; }
+  let h = `<div class="card"><h3>${ico('target')}Limitaciones del estado del arte</h3><ol style="margin:0;padding-left:20px">${R.limit.map((l,k) => `<li style="margin-bottom:6px"><b>L${k + 1}.</b> ${esc(l.texto)}${l.anadida ? ' <span class="tagx t">añadida por el verificador</span>' : ''}${l.evidencia && !l.anadida ? `<br><small style="color:var(--gris)">${esc(l.evidencia)}</small>` : ''}</li>`).join('')}</ol></div>`;
+  if(R.ideas.length) h += `<h2 class="sec-title" style="margin-top:8px">Ideas, por novedad</h2>` + R.ideas.map(it => `<div class="idea-c"><div class="h"><span class="nov">${it.novedad != null ? it.novedad + '/10' : 'evolución'}</span><b>${esc(it.id)} · ${esc(it.titulo)}</b><span class="dec ${(DEC[it.estado] || DEC.pend)[0]}">${(DEC[it.estado] || DEC.pend)[1]}</span>${R.best && R.trazas.find(t => t.id === R.best.trazaId)?.ideaId === it.id ? '<span class="dec best">la mejor</span>' : ''}</div><p>${esc(it.hipotesis)}</p>${it.limitacion ? `<p style="font-size:12.5px;color:var(--gris)">Ataca ${esc(it.limitacion)} · ${esc((it.componentes || []).join(' · '))}</p>` : ''}${it.justif ? `<p style="font-size:13px"><b>Novedad:</b> ${esc(it.justif)}</p>` : ''}${(it.cercanos || []).length ? `<div class="cer"><b>Lo más parecido en OpenAlex:</b> ${it.cercanos.map(c => `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.titulo)}</a> (${c.anio})`).join(' · ')}</div>` : ''}</div>`).join('');
+  $('outIdeas').innerHTML = h;
+}
+function pintaExp(){
+  if(R.modo === 'prop'){ $('expTitle').textContent = 'Diseño experimental'; $('expLede').textContent = 'Para cada idea, un plan con piloto y estudio completo. Un crítico metodológico juzga su plausibilidad (no hay resultados reales en este modo).'; return pintaExpProp(); }
+  $('expTitle').textContent = 'Experimentos'; 
+  if(!R.base){ $('outExp').innerHTML = '<p class="empty">Aún no hay experimentos.</p>'; return; }
+  const bf = f1(R.base.full), bs = f1(R.base.sub);
+  let h = `<div class="metrics"><div class="metric"><div class="metric-v">${bf != null ? bf.toFixed(4) : '…'}</div><div class="metric-l">Referencia · F1 medio</div><div class="metric-n">Benchmark completo, ${FULL().length} conjuntos. En el subconjunto: ${bs != null ? bs.toFixed(4) : '…'}.</div></div><div class="metric"><div class="metric-v ${R.best ? 'good' : ''}">${R.best ? f1(R.best.full).toFixed(4) : '—'}</div><div class="metric-l">Mejor idea · F1 medio</div><div class="metric-n">${R.best ? `${dpp(f1(R.best.full) - bf)} puntos sobre la referencia.` : 'Todavía ninguna la supera.'}</div></div><div class="metric"><div class="metric-v">${R.trazas.filter(t => t.estado === 'good').length}/${R.trazas.length}</div><div class="metric-l">Ideas que la superan</div><div class="metric-n">Buenas sobre probadas.</div></div></div>`;
+  if(R.trazas.length){
+    h += `<div class="card"><h3>${ico('grid')}Registro de ejecuciones</h3><div class="tbl-wrap"><table class="res"><thead><tr><th>Idea</th><th>Origen</th><th>Subconjunto</th><th>Completo</th><th>Decisión</th><th></th></tr></thead><tbody>${R.trazas.map(t => { const s = f1(t.sub), fu = f1(t.full); return `<tr class="${R.best?.trazaId === t.id ? 'best' : ''}"><td><b>${esc(t.titulo)}</b>${(t.pasos || []).filter(p => p.tipo === 'engineer' || p.tipo === 'error').length ? `<br><small style="color:var(--gris)">${t.pasos.filter(p => p.tipo === 'engineer' || p.tipo === 'error').length} ronda(s) de ajuste</small>` : ''}</td><td>${esc(t.origen)}${t.ronda ? ' ' + t.ronda : ''}</td><td class="n">${s != null ? s.toFixed(4) + `<br><span class="${s - bs > 0 ? 'pos' : 'neg'}">${dpp(s - bs)}</span>` : t.sub && !t.sub.ok ? 'error' : '…'}</td><td class="n">${fu != null ? fu.toFixed(4) + `<br><span class="${fu - bf > 0 ? 'pos' : 'neg'}">${dpp(fu - bf)}</span>` : '—'}</td><td><span class="dec ${(DEC[t.estado] || DEC.pend)[0]}">${(DEC[t.estado] || DEC.pend)[1]}</span>${R.best?.trazaId === t.id ? ' <span class="dec best">elegida</span>' : ''}</td><td><button class="btn btn-ghost btn-sm" type="button" data-tz="${t.id}">Ver</button></td></tr>`; }).join('')}</tbody></table></div><p class="help">Diferencias en puntos de F1 respecto a la referencia en el mismo conjunto de evaluación.</p></div>`;
+    const conF = R.trazas.filter(t => f1(t.full) != null), vals = [bf, ...conF.map(t => f1(t.full))], mn = Math.min(...vals) - .005, mx = Math.max(...vals) + .002;
+    const pos = v => ((v - mn) / (mx - mn) * 100).toFixed(1);
+    if(conF.length) h += `<div class="card"><h3>${ico('target')}Benchmark completo</h3><div class="barras"><div class="barra-f"><span>Referencia</span><span class="t"><i style="left:0;width:${pos(bf)}%;background:var(--acero-claro)"></i></span><b>${bf.toFixed(4)}</b></div>${conF.map(t => `<div class="barra-f"><span>${esc(t.titulo.slice(0, 40))}</span><span class="t"><i style="left:0;width:${pos(f1(t.full))}%;background:${f1(t.full) > bf ? 'var(--forjado)' : 'var(--brasa)'}"></i></span><b>${f1(t.full).toFixed(4)}</b></div>`).join('')}</div><p class="help">Escala recortada entre ${mn.toFixed(3)} y ${mx.toFixed(3)} para que se vean las diferencias.</p></div>`;
+  }
+  $('outExp').innerHTML = h;
+  $$('#outExp [data-tz]').forEach(b => b.onclick = () => verTraza(b.dataset.tz));
+}
+function pintaExpProp(){
+  if(!R.trazas.length){ $('outExp').innerHTML = '<p class="empty">Aún no hay diseños.</p>'; return; }
+  $('outExp').innerHTML = R.trazas.map(t => { const d = t.diseno || {}; return `<div class="card"><div class="actions" style="justify-content:space-between"><h3 style="margin:0">${esc(t.titulo)}</h3><span><span class="dec ${(DEC[t.estado] || DEC.pend)[0]}">${(DEC[t.estado] || DEC.pend)[1]}</span>${R.best?.trazaId === t.id ? ' <span class="dec best">elegida</span>' : ''}</span></div>${d.pregunta ? `<p><b>Pregunta:</b> ${esc(d.pregunta)}</p><p><b>Piloto:</b> ${esc(d.piloto)}</p><p><b>Estudio completo:</b> ${esc(d.estudio_completo)}</p><p><b>Criterio de éxito:</b> ${esc(d.criterio_exito)}</p><p style="font-size:13.5px;color:var(--gris)"><b>Métricas:</b> ${esc((d.metricas || []).join(' · '))} · <b>Riesgos:</b> ${esc((d.riesgos || []).join(' · '))}</p>` : '<p class="help"><span class="spin"></span> Diseñando…</p>'}${(t.pasos || []).map(p => `<div class="tip" style="margin:6px 0 0">${ico('scale')}<span><b>Crítico (${esc(p.tipo)}):</b> ${esc(p.texto)}</span></div>`).join('')}</div>`; }).join('') + (R.selMotivo ? `<div class="okbox">${ico('check')}<span><b>Selector:</b> ${esc(R.selMotivo)}</span></div>` : '');
+}
+function verTraza(id){
+  const t = R.trazas.find(x => x.id === id); if(!t) return;
+  $('mCodeT').textContent = t.titulo;
+  $('mCodeB').innerHTML = `<p class="help" style="margin-top:0">${esc(t.hipotesis || '')}</p><pre class="code">${esc(t.codigo || '')}</pre>${(t.pasos || []).map(p => `<div class="tip" style="margin:8px 0 0">${ico(p.tipo === 'error' ? 'bulb' : 'scale')}<span><b>${p.fase === 'sub' ? 'Subconjunto' : 'Completo'} · ${esc(({good:'buena',bad:'descartada',engineer:'ajustar',error:'error'})[p.tipo] || p.tipo)}${p.ganancia != null ? ` (${dpp(p.ganancia)} pp)` : ''}:</b> ${esc(p.texto)}</span></div>`).join('')}`;
+  $('mCode').classList.add('on');
+}
+function pintaAbl(){
+  if(!R.abl){ $('outAbl').innerHTML = '<p class="empty">Aún no hay ablaciones.</p>'; return; }
+  if(R.modo === 'prop'){ $('outAbl').innerHTML = `<div class="card"><h3>${ico('scale')}Plan de ablaciones</h3><div class="tbl-wrap"><table class="res"><thead><tr><th>Condición</th><th>Componente que se quita</th><th>Qué se espera</th><th>Cómo se mide</th></tr></thead><tbody>${R.abl.planes.map(p => `<tr><td><b>${esc(p.nombre)}</b></td><td>${esc(p.componente)}</td><td>${esc(p.hipotesis)}</td><td>${esc(p.medida || '')}</td></tr>`).join('')}</tbody></table></div></div>`; return; }
+  const bf = f1(R.best.full);
+  let h = `<div class="card"><h3>${ico('scale')}Qué aporta cada componente</h3><div class="tbl-wrap"><table class="res"><thead><tr><th>Variante</th><th>Qué se espera</th><th>F1 medio</th><th>Frente al método</th><th></th></tr></thead><tbody><tr class="best"><td><b>Método completo</b></td><td>—</td><td class="n">${bf.toFixed(4)}</td><td class="n">—</td><td></td></tr>${R.abl.planes.map((p,i) => `<tr><td><b>${esc(p.nombre)}</b></td><td>${esc(p.hipotesis || '')}</td><td class="n">${p.res?.ok ? p.res.media.f1.toFixed(4) : p.res ? 'error' : '…'}</td><td class="n">${p.res?.ok ? `<span class="${p.res.media.f1 < bf ? 'neg' : 'pos'}">${dpp(p.res.media.f1 - bf)}</span>` : ''}</td><td>${p.codigo ? `<button class="btn btn-ghost btn-sm" type="button" data-ab="${i}">Código</button>` : ''}</td></tr>`).join('')}<tr><td>Referencia</td><td>—</td><td class="n">${f1(R.base.full).toFixed(4)}</td><td class="n"><span class="neg">${dpp(f1(R.base.full) - bf)}</span></td><td></td></tr></tbody></table></div><p class="help">Una caída grande al quitar un componente indica que ese componente sostiene la mejora.</p></div>`;
+  if(R.abl.critica) h += `<div class="card"><h3>${ico('help')}Crítico de ablaciones · <span class="dec ${R.abl.critica.decision === 'good' ? 'good' : 'refine'}">${R.abl.critica.decision === 'good' ? 'método óptimo' : 'refinar'}</span></h3><p style="margin:0 0 6px">${esc(R.abl.critica.lectura || '')}</p><p class="help" style="margin:0">${esc(R.abl.critica.feedback || '')}</p></div>`;
+  if(R.abl.refinado) h += `<div class="${R.abl.refinado.aceptado ? 'okbox' : 'aviso'}">${R.abl.refinado.aceptado ? ico('check') : ''}<span><b>Comparador de resultados:</b> la versión refinada obtiene ${R.abl.refinado.res?.ok ? R.abl.refinado.res.media.f1.toFixed(4) : 'un error'} frente a ${(R.best.historial.length ? f1(R.best.historial[R.best.historial.length - 1].full) : bf).toFixed(4)}. ${R.abl.refinado.aceptado ? 'Es estrictamente mejor: se adopta.' : 'No es estrictamente mejor: se conserva el método anterior, como exige el marco.'}</span></div>`;
+  $('outAbl').innerHTML = h;
+  $$('#outAbl [data-ab]').forEach(b => b.onclick = () => { const p = R.abl.planes[+b.dataset.ab]; $('mCodeT').textContent = p.nombre; $('mCodeB').innerHTML = `<pre class="code">${esc(p.codigo)}</pre>`; $('mCode').classList.add('on'); });
+}
+function pintaRev(){
+  const md = R.modo === 'lab' && R.best ? pintaPaperMd(R.papel || '') : (R.papel || '');
+  let html = md ? mdAHtml(md) : '<p class="help">Aún no hay artículo.</p>';
+  (R.avisosNum || []).forEach(n => { html = html.split(esc(n)).join(`<mark title="Esta cifra no aparece en los resultados">${esc(n)}</mark>`); });
+  $('paper').innerHTML = html;
+  const rv = R.revisiones, ult = rv[rv.length - 1];
+  let q = `<div class="qa-top"><div class="ring" style="--p:${ult ? ult.puntuacion * 10 : 0};--rc:${!ult ? '#7C93AC' : ult.puntuacion >= R.cfg.umbral ? 'var(--forjado)' : '#F59E0B'}"><b>${ult ? ult.puntuacion : '–'}</b></div><div><h3>Revisión</h3><span>${ult ? `Escala ICLR · umbral ${R.cfg.umbral}` : 'Pendiente'}${rv.length > 1 ? ' · ' + rv.map(r => r.puntuacion).join(' → ') : ''}</span></div></div><div style="padding:12px 16px">`;
+  if(R.meta) q += `<div class="${R.meta.decision === 'accept' ? 'okbox' : 'aviso'}" style="margin:0 0 10px">${R.meta.decision === 'accept' ? ico('check') : ''}<span><b>Metarrevisión: ${R.meta.decision === 'accept' ? 'aceptado' : 'necesita refinamiento'}.</b> ${esc(R.meta.critica)}</span></div>`;
+  if((R.avisosNum || []).length) q += `<div class="aviso" style="margin:0 0 10px"><b>${R.avisosNum.length} cifra(s) en el texto que no están en los resultados:</b> ${R.avisosNum.map(esc).join(', ')}. Están marcadas en el artículo.</div>`;
+  if(ult) q += `<p class="sublab" style="margin-top:0">Última revisión</p><p style="font-size:13.5px;margin:0 0 6px">${esc(ult.resumen)}</p><p class="sublab">Debilidades</p><ul style="margin:0;padding-left:18px;font-size:13.5px">${ult.debilidades.map(d => `<li>${esc(d)}</li>`).join('')}</ul>`;
+  if(R.replica.length) q += `<p class="sublab">${R.modo === 'lab' ? 'Experimentos de la réplica' : 'Cambios de la réplica'}</p><ul style="margin:0;padding-left:18px;font-size:13.5px">${R.replica.map(x => `<li><b>${esc(x.titulo)}</b>${x.resumen && R.modo === 'lab' ? ': ' + esc(x.resumen) : ''}${x.motivo ? `<br><small style="color:var(--gris)">${esc(x.motivo)}</small>` : ''}</li>`).join('')}</ul>`;
+  q += `</div>`; $('qa').innerHTML = q;
+  $('outRev').innerHTML = rv.length > 1 ? `<div class="card"><h3>${ico('refresh')}Rondas de revisión</h3>${rv.map((r,i) => `<div class="rev"><div class="actions" style="justify-content:space-between"><b>Ronda ${i + 1}</b><span class="sc">${r.puntuacion}/10</span></div><p style="margin:0;font-size:13.5px">${esc(r.resumen)}</p></div>`).join('')}</div>` : '';
+}
+function pintaTodo(){ pintaIdeas(); pintaExp(); pintaAbl(); pintaRev(); }
+['navBack','goHome'].forEach(id => $(id).addEventListener('click', () => { seguir = false; }));
+$('stepper').addEventListener('click', () => { seguir = false; });
+
+/* ══════════ EXPORTACIÓN ══════════ */
+const nombreBase = () => (R.best?.titulo || 'fronteria').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').slice(0, 40);
+const mdFinal = () => (R.modo === 'lab' && R.best ? pintaPaperMd(R.papel || '') : (R.papel || '')) + `\n\n---\n*Generado con FronterIA, implementación a escala de navegador del marco ScientistTwo (Nam et al., 2026, arXiv:2609.19644). Borrador para revisión humana.*\n`;
+$('expMd').onclick = () => R.papel ? dl(nombreBase() + '.md', mdFinal(), 'text/markdown') : toast('Aún no hay artículo');
+$('expDocx').onclick = async () => { if(!R.papel) return toast('Aún no hay artículo'); try{ dl(nombreBase() + '.docx', await mdADocx(mdFinal(), R.best?.titulo || 'Artículo')); }catch(e){ toast(e.message); } };
+$('expJson').onclick = () => { const r = JSON.parse(JSON.stringify(R)); delete r.csv; dl('fronteria_registro.json', JSON.stringify(r, null, 1), 'application/json'); };
+$('expPy').onclick = () => {
+  if(R.modo !== 'lab' || !R.best) return toast('Solo en el modo laboratorio, con una idea elegida');
+  dl(nombreBase() + '.py', `# Reproducción del resultado de FronterIA (scikit-learn ${'1.4'})\n# Método elegido: ${R.best.titulo}\n# Ejecuta: python ${nombreBase()}.py\n\n${HARNESS}\n\nREFERENCIA = '''${R.base_code}'''\n\nMETODO = '''${R.best.codigo}'''\n\nif __name__ == '__main__':\n    import json\n    conj = ${JSON.stringify(FULL().filter(k => k !== 'propio'))}\n    for nombre, cod in [('Referencia', REFERENCIA), ('Método', METODO)]:\n        r = json.loads(evaluar(cod, conj, 5, (0,)))\n        print(nombre, 'F1 medio = %.4f' % r['media']['f1'], {k: round(v['f1'], 4) for k, v in r['por_conjunto'].items()})\n`, 'text/x-python');
+};
+async function cargaDocx(){ if(window.docx) return; for(const u of ['https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js','https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js']){ try{ await new Promise((ok,ko) => { const s = document.createElement('script'); s.src = u; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }); if(window.docx) return; }catch(e){} } throw new Error('No se pudo cargar la librería de Word'); }
+function mdAHtml(md){
+  const out = []; const L = String(md || "").split("\n"); let i = 0;
+  const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  while(i < L.length){
+    const l = L[i];
+    if(/^```/.test(l)){ const c = []; i++; while(i < L.length && !/^```/.test(L[i])) c.push(L[i++]); i++; out.push(`<pre>${esc(c.join("\n"))}</pre>`); continue; }
+    if(/^\s*\|/.test(l)){ const rows = []; while(i < L.length && /^\s*\|/.test(L[i])){ if(!/^\s*\|\s*:?-{2,}/.test(L[i])) rows.push(L[i].trim().replace(/^\||\|$/g, "").split("|").map(x => x.trim())); i++; } out.push("<table>" + rows.map((r,k) => "<tr>" + r.map(x => k ? `<td>${inl(x)}</td>` : `<th>${inl(x)}</th>`).join("") + "</tr>").join("") + "</table>"); continue; }
+    let m;
+    if((m = l.match(/^(#{1,4})\s+(.*)/))){ out.push(`<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`); i++; continue; }
+    if(/^\s*<details>/i.test(l)){ out.push("<details>"); const r = l.replace(/^\s*<details>/i, ""); if(r.trim()) L[i] = r; else { i++; } continue; }
+    if(/^\s*<summary>/i.test(l)){ out.push(`<summary>${inl(l.replace(/<\/?summary>/gi, "").trim())}</summary>`); i++; continue; }
+    if(/<\/details>/i.test(l)){ const r = l.replace(/<\/details>/i, "").trim(); if(r) out.push(`<p>${inl(r)}</p>`); out.push("</details>"); i++; continue; }
+    if(/^\s*(?:[-*]|\d+[.)])\s+/.test(l)){ const num = /^\s*\d/.test(l), it = []; while(i < L.length && /^\s*(?:[-*]|\d+[.)])\s+/.test(L[i]) && /^\s*\d/.test(L[i]) === num){ it.push(`<li>${inl(L[i].replace(/^\s*(?:[-*]|\d+[.)])\s+/, ""))}</li>`); i++; } out.push(num ? `<ol>${it.join("")}</ol>` : `<ul>${it.join("")}</ul>`); continue; }
+    if(!l.trim()){ i++; continue; }
+    out.push(`<p>${inl(l)}</p>`); i++;
+  }
+  return out.join("\n");
+}
+async function mdADocx(md, titulo){
+  if(!window.docx) await cargaDocx();
+  const D = window.docx, F = "Arial", kids = [];
+  const runs = (t, o = {}) => { const out = []; String(t).split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(p => { if(!p) return; if(/^\*\*/.test(p)) out.push(new D.TextRun({text:p.slice(2, -2), bold:true, font:F, size:o.size || 22})); else if(/^`/.test(p)) out.push(new D.TextRun({text:p.slice(1, -1), font:"Consolas", size:20})); else out.push(new D.TextRun({text:p, font:F, size:o.size || 22, italics:o.it, bold:o.b})); }); return out; };
+  const P = (t, o = {}) => new D.Paragraph({children:runs(t, o), spacing:{after:o.after ?? 120}, heading:o.h, indent:o.ind ? {left:o.ind} : undefined, bullet:o.bullet ? {level:0} : undefined, shading:o.shade ? {fill:o.shade, type:D.ShadingType.CLEAR} : undefined});
+  const L = String(md).split("\n"); let i = 0, enDet = false;
+  while(i < L.length){
+    const l = L[i]; let m;
+    if(/^```/.test(l)){ i++; while(i < L.length && !/^```/.test(L[i])) kids.push(new D.Paragraph({children:[new D.TextRun({text:L[i++], font:"Consolas", size:19})], shading:{fill:"F3F6FA", type:D.ShadingType.CLEAR}, spacing:{after:0}})); i++; kids.push(P("", {after:80})); continue; }
+    if(/^\s*\|/.test(l)){ const rows = []; while(i < L.length && /^\s*\|/.test(L[i])){ if(!/^\s*\|\s*:?-{2,}/.test(L[i])) rows.push(L[i].trim().replace(/^\||\|$/g, "").split("|").map(x => x.trim())); i++; }
+      const w = Math.max(...rows.map(r => r.length)); const bd = {style:D.BorderStyle.SINGLE, size:1, color:"D8E0E9"};
+      kids.push(new D.Table({width:{size:100, type:D.WidthType.PERCENTAGE}, rows:rows.map((r,k) => new D.TableRow({children:Array.from({length:w}, (_,j) => new D.TableCell({borders:{top:bd,bottom:bd,left:bd,right:bd}, shading:k ? undefined : {fill:"0F2237", type:D.ShadingType.CLEAR}, children:[new D.Paragraph({children:[new D.TextRun({text:String(r[j] ?? "").replace(/\*\*/g, ""), bold:!k, color:k ? undefined : "FFFFFF", font:F, size:19})]})]}))}))}));
+      kids.push(P("", {after:80})); continue; }
+    if((m = l.match(/^(#{1,4})\s+(.*)/))){ kids.push(new D.Paragraph({text:m[2].replace(/\*\*/g, ""), heading:[D.HeadingLevel.TITLE, D.HeadingLevel.HEADING_1, D.HeadingLevel.HEADING_2, D.HeadingLevel.HEADING_3][m[1].length - 1], spacing:{before:200, after:100}})); i++; continue; }
+    if(/<details>/i.test(l)){ enDet = true; i++; continue; }
+    if(/<summary>/i.test(l)){ kids.push(P("▸ " + l.replace(/<\/?summary>|<\/?details>/gi, "").trim(), {b:true, shade:"FFF8E6", after:40})); i++; continue; }
+    if(/<\/details>/i.test(l)){ const r = l.replace(/<\/details>/i, "").trim(); if(r) kids.push(P(r, {it:true, shade:"FFF8E6"})); enDet = false; i++; continue; }
+    if((m = l.match(/^\s*[-*]\s+(.*)/))){ kids.push(P(m[1], {bullet:true, after:40})); i++; continue; }
+    if((m = l.match(/^\s*(\d+)[.)]\s+(.*)/))){ kids.push(P(m[1] + ". " + m[2], {ind:360, after:40})); i++; continue; }
+    if(!l.trim()){ i++; continue; }
+    kids.push(P(l, enDet ? {it:true, shade:"FFF8E6"} : {})); i++;
+  }
+  return await D.Packer.toBlob(new D.Document({creator:"NanoClase", title:titulo, styles:{default:{document:{run:{font:F, size:22}}}}, sections:[{properties:{}, children:kids}]}));
+}
+
+
+/* ══════════ AYUDA ══════════ */
+const GLOS = [['ScientistTwo','Marco de Google Cloud AI Research (Nam et al., 2026) en el que agentes especializados recorren todo el ciclo de investigación sin intervención humana. En el artículo mejora 86 de 107 problemas de ICLR, ICML y NeurIPS.'],['Candidato, crítico, refinamiento','El patrón de cada etapa (Listing 1 del artículo): un agente propone, otro decide aceptar, descartar o refinar, y hay un presupuesto de rondas.'],['Subconjunto primero','Las ideas se prueban en una parte del benchmark y solo las prometedoras pasan al completo, para ahorrar cómputo.'],['Evolución','Nuevas ideas generadas a partir de los éxitos y fracasos anteriores, mezcladas con semillas aún no probadas para no quedarse en un óptimo local.'],['Ablación','Quitar un componente para medir lo que aporta. Si quitar algo mejora el método, se prueba sin él y solo se adopta si es estrictamente mejor.'],['Réplica','Cuando el revisor puntúa por debajo del umbral, se ejecutan experimentos nuevos para responderle y se revisa el texto.'],['Salvaguardas de FronterIA','Una regla impide que un crítico dé por buena una idea que no mejora; el código se revisa antes de ejecutarse; las cifras del texto se contrastan con los resultados; la propuesta solo cita trabajos encontrados en OpenAlex.'],['Límites','Benchmark pequeño y métodos de scikit-learn: sirve para entender y enseñar el marco, y para explorar ideas, no para sustituir una investigación.']];
+$('glos').innerHTML = GLOS.map(g => `<div><b>${esc(g[0])}</b><span>${esc(g[1])}</span></div>`).join('');
+$('btnHelp').onclick = () => $('mHelp').classList.add('on');
+$$('.modal').forEach(m => m.addEventListener('click', e => { if(e.target === m || e.target.hasAttribute('data-close')) m.classList.remove('on'); }));
+document.addEventListener('keydown', e => { if(e.key === 'Escape') $$('.modal').forEach(m => m.classList.remove('on')); });
+
+/* ══════════ EJEMPLO REAL YA EJECUTADO ══════════ */
+const DEMO = {"modo": "lab", "cfg": {"nSeed": 5, "n0": 3, "nEng": 1, "K": 1, "umbral": 7, "nRev": 1, "lang": "es"}, "problema": "Superar a un bosque aleatorio (el método de referencia) en clasificación tabular de propósito general: un único método que funcione bien a la vez en todos los conjuntos del benchmark, medido por F1 macro con validación cruzada estratificada, sin ajustar nada por conjunto.", "base_code": "def build_model():\n    from sklearn.ensemble import RandomForestClassifier\n    return RandomForestClassifier(n_estimators=200, random_state=0, n_jobs=1)", "conjuntos": ["mama", "vino", "iris", "digitos", "sintetico"], "base": {"codigo": "def build_model():\n    from sklearn.ensemble import RandomForestClassifier\n    return RandomForestClassifier(n_estimators=200, random_state=0, n_jobs=1)", "sub": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9631300473405736, "acc_sd": 0.015456484007999545, "f1": 0.9604062040789629, "f1_sd": 0.01645387223108435, "bal": 0.9582120172012467, "seg": 0.28636474366666675, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9720338983050847, "acc_sd": 0.020838958351986448, "f1": 0.9729856064962448, "f1_sd": 0.020065290771502906, "bal": 0.9747076023391813, "seg": 0.19765502700000562, "n": 178, "clases": 3, "p": 13}}, "media": {"acc": 0.9675819728228292, "f1": 0.9666959052876039, "bal": 0.966459809770214, "seg": 0.24200988533333617}}, "full": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9666511411271541, "acc_sd": 0.01871137352175538, "f1": 0.9641797961539085, "f1_sd": 0.020048320200116418, "bal": 0.9618658332423482, "seg": 0.3198370302000001, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9831746031746033, "acc_sd": 0.013740935306558193, "f1": 0.9832425508214981, "f1_sd": 0.013747948375141166, "bal": 0.9857142857142858, "seg": 0.20413857400000096, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9400000000000001, "acc_sd": 0.024944382578492935, "f1": 0.9393715449335318, "f1_sd": 0.025687011228108545, "bal": 0.9400000000000001, "seg": 0.19280948960000616, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9766233364283503, "acc_sd": 0.004542738581790455, "f1": 0.9764669371193117, "f1_sd": 0.004764317002901694, "bal": 0.9764795972443032, "seg": 0.5561724678000018, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7183333333333334, "acc_sd": 0.03887301263230198, "f1": 0.7184088849551964, "f1_sd": 0.03809597439580667, "bal": 0.7190254325620178, "seg": 0.36257713419999504, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9169564828126882, "f1": 0.9163339427966892, "bal": 0.9166170297525911, "seg": 0.32710693916000083}}}, "limit": [{"texto": "Un único tipo de modelo (árboles con partición por ejes) tiene fronteras escalonadas y rinde peor cuando la señal está repartida en muchas variables continuas correlacionadas, como en los dígitos.", "evidencia": "Dígitos: F1 0.9765; es donde más margen hay entre conjuntos con muchas variables."}, {"texto": "El bosque aleatorio no aprovecha la escala de las variables: los modelos basados en distancias o márgenes podrían complementar sus errores.", "evidencia": "No hay ningún componente sensible a la geometría de los datos."}, {"texto": "En el conjunto sintético con etiquetas ruidosas el rendimiento cae mucho, y el método no tiene mecanismos explícitos de regularización frente al ruido.", "evidencia": "Sintético: F1 0.7184, el más bajo del benchmark."}, {"texto": "Los votos de los árboles están poco diversificados: todos comparten el mismo sesgo inductivo, lo que limita lo que aporta añadir más árboles.", "evidencia": "Diversidad de un conjunto de clasificadores homogéneo."}, {"texto": "Las probabilidades del bosque están mal calibradas en clases minoritarias, lo que penaliza el F1 macro frente a la exactitud.", "evidencia": "El F1 macro queda ligeramente por debajo de la exactitud en todos los conjuntos.", "anadida": true}], "ideas": [{"id": "I1", "titulo": "Voto blando entre familias de modelos distintas (árboles extremos, boosting y logística)", "hipotesis": "Combinar sesgos inductivos distintos reduce los errores correlacionados del bosque y mejora a la vez los conjuntos de fronteras escalonadas y los de fronteras suaves.", "limitacion": "L4", "componentes": ["Árboles extremadamente aleatorizados", "Gradient boosting por histogramas", "Regresión logística estandarizada", "Voto blando"], "novedad": 6, "justif": "La combinación de familias está bien documentada (Dietterich, 2000; Kuncheva y Whitaker, 2003); lo nuevo es la elección concreta para un benchmark heterogéneo sin ajuste por conjunto.", "cercanos": [{"titulo": "Ensemble Methods in Machine Learning", "anio": 2000, "autor": "Dietterich", "revista": "Multiple Classifier Systems", "url": "https://doi.org/10.1007/3-540-45014-9_1", "citas": null, "resumen": ""}, {"titulo": "Measures of diversity in classifier ensembles and their relationship with the ensemble accuracy", "anio": 2003, "autor": "Kuncheva", "revista": "Machine Learning", "url": "https://doi.org/10.1023/A:1022859003006", "citas": null, "resumen": ""}, {"titulo": "Stacked generalization", "anio": 1992, "autor": "Wolpert", "revista": "Neural Networks", "url": "https://doi.org/10.1016/S0893-6080(05)80023-1", "citas": null, "resumen": ""}], "origen": "semilla", "estado": "good"}, {"id": "I2", "titulo": "Gradient boosting por histogramas con regularización L2", "hipotesis": "El boosting suele superar al bosque en datos tabulares y la regularización L2 lo protege del ruido.", "limitacion": "L3", "componentes": ["Gradient boosting por histogramas", "Regularización L2", "Tasa de aprendizaje baja"], "novedad": 3, "justif": "Muy estudiado: Friedman (2001) y el análisis de Grinsztajn et al. (2022) sobre datos tabulares.", "cercanos": [{"titulo": "Greedy function approximation: A gradient boosting machine", "anio": 2001, "autor": "Friedman", "revista": "The Annals of Statistics", "url": "https://doi.org/10.1214/aos/1013203451", "citas": null, "resumen": ""}, {"titulo": "Why do tree-based models still outperform deep learning on typical tabular data?", "anio": 2022, "autor": "Grinsztajn", "revista": "NeurIPS Datasets and Benchmarks", "url": "https://arxiv.org/abs/2207.08815", "citas": null, "resumen": ""}], "origen": "semilla", "estado": "bad"}, {"id": "I3", "titulo": "Vecinos más próximos tras una transformación cuantílica gaussiana", "hipotesis": "Normalizar las distribuciones marginales hace útiles las distancias y aporta una frontera no escalonada.", "limitacion": "L2", "componentes": ["Transformación cuantílica", "k vecinos ponderados por distancia"], "novedad": 4, "justif": "El clasificador de vecinos es clásico (Cover y Hart, 1967); la transformación previa es una práctica conocida.", "cercanos": [{"titulo": "Nearest neighbor pattern classification", "anio": 1967, "autor": "Cover", "revista": "IEEE Transactions on Information Theory", "url": "https://doi.org/10.1109/TIT.1967.1053964", "citas": null, "resumen": ""}], "origen": "semilla", "estado": "bad"}, {"id": "I4", "titulo": "Apilamiento con un metaclasificador calibrado", "hipotesis": "Un metaclasificador aprende a ponderar a cada modelo según el conjunto y calibra las probabilidades.", "limitacion": "L5", "componentes": ["Modelos base diversos", "Metaclasificador logístico", "Validación cruzada interna"], "novedad": 5, "justif": "El apilamiento procede de Wolpert (1992); lo nuevo sería la calibración para F1 macro.", "cercanos": [{"titulo": "Stacked generalization", "anio": 1992, "autor": "Wolpert", "revista": "Neural Networks", "url": "https://doi.org/10.1016/S0893-6080(05)80023-1", "citas": null, "resumen": ""}], "origen": "semilla", "estado": "pend"}, {"id": "I5", "titulo": "Bosque aleatorio con rotaciones aleatorias de las variables", "hipotesis": "Rotar el espacio antes de cada árbol rompe la partición por ejes y suaviza la frontera.", "limitacion": "L1", "componentes": ["Rotaciones aleatorias", "Bosque aleatorio"], "novedad": 5, "justif": "Relacionado con los bosques de rotación; poco explorado con scikit-learn estándar.", "cercanos": [{"titulo": "Random Forests", "anio": 2001, "autor": "Breiman", "revista": "Machine Learning", "url": "https://doi.org/10.1023/A:1010933404324", "citas": null, "resumen": ""}, {"titulo": "Extremely randomized trees", "anio": 2006, "autor": "Geurts", "revista": "Machine Learning", "url": "https://doi.org/10.1007/s10994-006-6226-1", "citas": null, "resumen": ""}], "origen": "semilla", "estado": "pend"}, {"id": "E1.1", "titulo": "Voto blando de árboles extremos, SVC con núcleo RBF y logística", "hipotesis": "La ejecución T1 mostró que la diversidad ayuda pero el boosting aportaba poco y encarecía el entrenamiento; T3 mostró que una frontera suave basada en distancias ayuda en unos conjuntos y falla sola. Sustituir el boosting por una SVC con núcleo RBF combina esa frontera suave con la robustez de los árboles.", "componentes": ["Árboles extremadamente aleatorizados (400)", "SVC RBF estandarizada con probabilidades", "Regresión logística estandarizada", "Voto blando"], "cercanos": [{"titulo": "Support-vector networks", "anio": 1995, "autor": "Cortes", "revista": "Machine Learning", "url": "https://doi.org/10.1007/BF00994018", "citas": null, "resumen": ""}, {"titulo": "Extremely randomized trees", "anio": 2006, "autor": "Geurts", "revista": "Machine Learning", "url": "https://doi.org/10.1007/s10994-006-6226-1", "citas": null, "resumen": ""}], "origen": "evolución", "estado": "good", "novedad": null}], "trazas": [{"id": "T1", "ideaId": "I1", "titulo": "Voto blando entre familias de modelos distintas (árboles extremos, boosting y logística)", "hipotesis": "Combinar sesgos inductivos distintos reduce los errores correlacionados del bosque y mejora a la vez los conjuntos de fronteras escalonadas y los de fronteras suaves.", "origen": "semilla", "ronda": 0, "estado": "good", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, VotingClassifier\n    from sklearn.linear_model import LogisticRegression\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=300, random_state=0, n_jobs=1)),\n        ('hgb', HistGradientBoostingClassifier(max_iter=200, learning_rate=0.08, random_state=0)),\n        ('lr', make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),\n    ], voting='soft')", "componentes": ["Árboles extremadamente aleatorizados", "Gradient boosting por histogramas", "Regresión logística estandarizada", "Voto blando"], "sub": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9701290262693772, "acc_sd": 0.008927666583602693, "f1": 0.9680233302299758, "f1_sd": 0.009310103177096888, "bal": 0.9666212964058863, "seg": 0.45637355999999346, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9831450094161959, "acc_sd": 0.013839565776616691, "f1": 0.9835590411190611, "f1_sd": 0.01394815540327221, "bal": 0.9861111111111112, "seg": 0.32173297266666623, "n": 178, "clases": 3, "p": 13}}, "media": {"acc": 0.9766370178427866, "f1": 0.9757911856745185, "bal": 0.9763662037584988, "seg": 0.3890532663333298}}, "full": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9754075454122031, "acc_sd": 0.010208605973985879, "f1": 0.9735061050194481, "f1_sd": 0.011068423129098644, "bal": 0.9707977191313253, "seg": 0.4978562353999962, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9831746031746033, "acc_sd": 0.013740935306558193, "f1": 0.9832425508214981, "f1_sd": 0.013747948375141166, "bal": 0.9857142857142858, "seg": 0.3361975301999962, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9466666666666667, "acc_sd": 0.01632993161855452, "f1": 0.9463638895217843, "f1_sd": 0.016510767313129046, "bal": 0.9466666666666667, "seg": 0.3329921227999989, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9816357164964409, "acc_sd": 0.002230096684472002, "f1": 0.9815383006021994, "f1_sd": 0.0023235636794526025, "bal": 0.9815616877381583, "seg": 3.486897293199996, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7100000000000001, "acc_sd": 0.04453463071962464, "f1": 0.7100334544565663, "f1_sd": 0.044287972980327724, "bal": 0.7108974358974358, "seg": 0.955280444400006, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9193769063499827, "f1": 0.9189368600842993, "bal": 0.9191275590295744, "seg": 1.1218447251999986}}, "pasos": [{"fase": "sub", "tipo": "good", "texto": "Mejora en los dos conjuntos del subconjunto, con la mayor ganancia en vino. Pasa al benchmark completo.", "ganancia": 0.00909528038691465}, {"fase": "full", "tipo": "good", "texto": "Supera a la referencia en el F1 medio, aunque por poco y con un coste de entrenamiento mucho mayor por el boosting.", "ganancia": 0.002602917287610085}], "feedback": "Supera a la referencia por poco; el boosting encarece mucho el entrenamiento."}, {"id": "T2", "ideaId": "I2", "titulo": "Gradient boosting por histogramas con regularización L2", "hipotesis": "El boosting suele superar al bosque en datos tabulares y la regularización L2 lo protege del ruido.", "origen": "semilla", "ronda": 0, "estado": "bad", "codigo": "def build_model():\n    from sklearn.ensemble import HistGradientBoostingClassifier\n    return HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, l2_regularization=1.0, random_state=0)", "componentes": ["Gradient boosting por histogramas", "Regularización L2", "Tasa de aprendizaje baja"], "sub": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9648473034437947, "acc_sd": 0.010825686989489217, "f1": 0.9624577752908586, "f1_sd": 0.011368207885488995, "bal": 0.9623860811930406, "seg": 0.19166321933334984, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9607344632768361, "acc_sd": 0.007590411775448826, "f1": 0.9629418944362312, "f1_sd": 0.0064804953441127125, "bal": 0.9653381642512078, "seg": 0.18334698466666546, "n": 178, "clases": 3, "p": 13}}, "media": {"acc": 0.9627908833603154, "f1": 0.9626998348635449, "bal": 0.9638621227221242, "seg": 0.18750510200000764}}, "full": null, "pasos": [{"fase": "sub", "tipo": "bad", "texto": "Peor que la referencia en los dos conjuntos. Ajustar la regularización no ataca la limitación que se buscaba: se descarta.", "ganancia": -0.003996070424058917}], "feedback": "Peor que la referencia en el subconjunto."}, {"id": "T3", "ideaId": "I3", "titulo": "Vecinos más próximos tras una transformación cuantílica gaussiana", "hipotesis": "Normalizar las distribuciones marginales hace útiles las distancias y aporta una frontera no escalonada.", "origen": "semilla", "ronda": 0, "estado": "bad", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import QuantileTransformer\n    from sklearn.neighbors import KNeighborsClassifier\n    return make_pipeline(QuantileTransformer(n_quantiles=100, output_distribution='normal'), KNeighborsClassifier(n_neighbors=7, weights='distance'))", "componentes": ["Transformación cuantílica", "k vecinos ponderados por distancia"], "sub": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9578019121878771, "acc_sd": 0.008708634727264807, "f1": 0.9542984341032805, "f1_sd": 0.009449930082764823, "bal": 0.949141910285241, "seg": 0.027391002666670754, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9268361581920903, "acc_sd": 0.02144289233259696, "f1": 0.9295064322909519, "f1_sd": 0.02118538542727773, "bal": 0.9368961352657005, "seg": 0.008784904666669036, "n": 178, "clases": 3, "p": 13}}, "media": {"acc": 0.9423190351899837, "f1": 0.9419024331971162, "bal": 0.9430190227754707, "seg": 0.018087953666669897}}, "full": null, "pasos": [{"fase": "sub", "tipo": "bad", "texto": "(Corregido por la regla: más de 2 puntos por debajo de la referencia.) La frontera basada en distancias ayuda poco sola, pero podría complementar a los árboles.", "ganancia": -0.024793472090487656}], "feedback": "Muy por debajo de la referencia; como complemento podría servir."}, {"id": "T4", "ideaId": "E1.1", "titulo": "Voto blando de árboles extremos, SVC con núcleo RBF y logística", "hipotesis": "La ejecución T1 mostró que la diversidad ayuda pero el boosting aportaba poco y encarecía el entrenamiento; T3 mostró que una frontera suave basada en distancias ayuda en unos conjuntos y falla sola. Sustituir el boosting por una SVC con núcleo RBF combina esa frontera suave con la robustez de los árboles.", "origen": "evolución", "ronda": 1, "estado": "good", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier\n    from sklearn.linear_model import LogisticRegression\n    from sklearn.svm import SVC\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=400, random_state=0, n_jobs=1)),\n        ('svc', make_pipeline(StandardScaler(), SVC(C=3.0, probability=True, random_state=0))),\n        ('lr', make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),\n    ], voting='soft')", "componentes": ["Árboles extremadamente aleatorizados (400)", "SVC RBF estandarizada con probabilidades", "Regresión logística estandarizada", "Voto blando"], "sub": {"ok": true, "por_conjunto": {"mama": {"acc": 0.977155852594449, "acc_sd": 0.0024552428117317077, "f1": 0.975454320145572, "f1_sd": 0.0025776021670595823, "bal": 0.9732039294591076, "seg": 0.33015581033333774, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9887947269303202, "acc_sd": 0.007924163804131544, "f1": 0.9891948371450187, "f1_sd": 0.007682655718168548, "bal": 0.9907407407407408, "seg": 0.2822146616666714, "n": 178, "clases": 3, "p": 13}}, "media": {"acc": 0.9829752897623847, "f1": 0.9823245786452953, "bal": 0.9819723350999242, "seg": 0.3061852360000046}}, "full": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9841794752367644, "acc_sd": 0.011642125787126707, "f1": 0.9830424078260434, "f1_sd": 0.012495285357694712, "bal": 0.9817104175440239, "seg": 0.3485748312000112, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9942857142857143, "acc_sd": 0.011428571428571432, "f1": 0.9940220922677063, "f1_sd": 0.011955815464587438, "bal": 0.9952380952380953, "seg": 0.2876530635999927, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.27867533799999367, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9844227793252864, "acc_sd": 0.004832236012700007, "f1": 0.9844300300466496, "f1_sd": 0.004817787995086265, "bal": 0.9844224140106494, "seg": 1.0956597147999958, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7066666666666668, "acc_sd": 0.034318767136623324, "f1": 0.7065253380758981, "f1_sd": 0.0349125831051724, "bal": 0.7072732958098812, "seg": 0.5206951833999938, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9245775937695531, "f1": 0.9242336792203336, "bal": 0.9243955111871965, "seg": 0.5062516261999974}}, "pasos": [{"fase": "sub", "tipo": "good", "texto": "La mejor del subconjunto: más de un punto y medio por encima de la referencia.", "ganancia": 0.01562867335769147}, {"fase": "full", "tipo": "good", "texto": "Supera a la referencia en el F1 medio y es más barata de entrenar que T1.", "ganancia": 0.007899736423644388}], "feedback": "Supera a la referencia y a T1 con menor coste."}], "best": {"trazaId": "T4", "titulo": "Voto blando de árboles extremos, SVC con núcleo RBF y logística", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier\n    from sklearn.linear_model import LogisticRegression\n    from sklearn.svm import SVC\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=400, random_state=0, n_jobs=1)),\n        ('svc', make_pipeline(StandardScaler(), SVC(C=3.0, probability=True, random_state=0))),\n        ('lr', make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),\n    ], voting='soft')", "componentes": ["Árboles extremadamente aleatorizados (400)", "SVC RBF estandarizada con probabilidades", "Regresión logística estandarizada", "Voto blando"], "full": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9841794752367644, "acc_sd": 0.011642125787126707, "f1": 0.9830424078260434, "f1_sd": 0.012495285357694712, "bal": 0.9817104175440239, "seg": 0.3485748312000112, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9942857142857143, "acc_sd": 0.011428571428571432, "f1": 0.9940220922677063, "f1_sd": 0.011955815464587438, "bal": 0.9952380952380953, "seg": 0.2876530635999927, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.27867533799999367, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9844227793252864, "acc_sd": 0.004832236012700007, "f1": 0.9844300300466496, "f1_sd": 0.004817787995086265, "bal": 0.9844224140106494, "seg": 1.0956597147999958, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7066666666666668, "acc_sd": 0.034318767136623324, "f1": 0.7065253380758981, "f1_sd": 0.0349125831051724, "bal": 0.7072732958098812, "seg": 0.5206951833999938, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9245775937695531, "f1": 0.9242336792203336, "bal": 0.9243955111871965, "seg": 0.5062516261999974}}, "historial": []}, "abl": {"planes": [{"nombre": "Sin la SVC", "componente": "SVC RBF", "hipotesis": "Si la frontera suave es la que aporta, quitarla debería devolver el rendimiento hacia el de T1.", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier\n    from sklearn.linear_model import LogisticRegression\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=400, random_state=0, n_jobs=1)),\n        ('lr', make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),\n    ], voting='soft')", "res": {"ok": true, "por_conjunto": {"mama": {"acc": 0.98067070330694, "acc_sd": 0.008588584764482985, "f1": 0.9791773682797185, "f1_sd": 0.009225983585619399, "bal": 0.975976011105392, "seg": 0.3433840277999991, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9831746031746033, "acc_sd": 0.013740935306558193, "f1": 0.9832425508214981, "f1_sd": 0.013747948375141166, "bal": 0.9857142857142858, "seg": 0.3136849122000001, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.29430293480000386, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9771928195605076, "acc_sd": 0.010443369644343848, "f1": 0.9772054035989802, "f1_sd": 0.010359195584413821, "bal": 0.9771507810331339, "seg": 0.8692931892000046, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.6866666666666668, "acc_sd": 0.05338539126015656, "f1": 0.6862788987940802, "f1_sd": 0.05340347927764334, "bal": 0.6874765478424015, "seg": 0.46599792499999354, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9162076252084101, "f1": 0.9158105498759295, "bal": 0.9159301918057094, "seg": 0.45733259780000024}}}, {"nombre": "Sin la regresión logística", "componente": "Regresión logística", "hipotesis": "La logística es casi lineal; puede ser redundante con la SVC.", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier\n    from sklearn.svm import SVC\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=400, random_state=0, n_jobs=1)),\n        ('svc', make_pipeline(StandardScaler(), SVC(C=3.0, probability=True, random_state=0))),\n    ], voting='soft')", "res": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9806707033069397, "acc_sd": 0.008588584764482985, "f1": 0.9792335204221008, "f1_sd": 0.009218651242384213, "bal": 0.9769485127821191, "seg": 0.32935301820000973, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9887301587301588, "acc_sd": 0.013804961844545337, "f1": 0.9882144697631692, "f1_sd": 0.014436778625852255, "bal": 0.9885714285714287, "seg": 0.2804561843999977, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.26589514720000695, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9883163107397092, "acc_sd": 0.004077028578139616, "f1": 0.9883478761579607, "f1_sd": 0.004131176513465306, "bal": 0.9883130946072123, "seg": 1.0257973144000005, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7100000000000001, "acc_sd": 0.03472111109333277, "f1": 0.7091295669575706, "f1_sd": 0.033604068700706466, "bal": 0.7106514488221805, "seg": 0.5307393702000127, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9242101012220283, "f1": 0.9236147922372343, "bal": 0.9235635636232548, "seg": 0.4864482068800056}}}, {"nombre": "Sin los árboles extremos", "componente": "Árboles extremadamente aleatorizados", "hipotesis": "Sin árboles, el método pierde robustez en variables irrelevantes.", "codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import VotingClassifier\n    from sklearn.linear_model import LogisticRegression\n    from sklearn.svm import SVC\n    return VotingClassifier([\n        ('svc', make_pipeline(StandardScaler(), SVC(C=3.0, probability=True, random_state=0))),\n        ('lr', make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),\n    ], voting='soft')", "res": {"ok": true, "por_conjunto": {"mama": {"acc": 0.982425089271852, "acc_sd": 0.01467837745289711, "f1": 0.9812032339280459, "f1_sd": 0.01568293180951117, "bal": 0.9803019668397985, "seg": 0.017862500600006114, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9831746031746033, "acc_sd": 0.02230370548603213, "f1": 0.9821702404158543, "f1_sd": 0.023729908112798848, "bal": 0.981904761904762, "seg": 0.008193394599999237, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.006784124400002156, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9827545651501083, "acc_sd": 0.005371959981726552, "f1": 0.9827587957655254, "f1_sd": 0.0053627025778798946, "bal": 0.9827398743281096, "seg": 0.2522235710000018, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.6683333333333334, "acc_sd": 0.0419655943733806, "f1": 0.6685828001077236, "f1_sd": 0.04182685242395687, "bal": 0.668931623931624, "seg": 0.05652185260000238, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9140041848526461, "f1": 0.9135727196205039, "bal": 0.9134423120675255, "seg": 0.06831708864000233}}}], "critica": {"decision": "refine", "feedback": "La regresión logística apenas aporta: quitarla solo cambia el F1 en la cuarta decimal. Propongo simplificar el método sin ella.", "lectura": "Los árboles extremos y la SVC sostienen la mejora: quitar cualquiera de los dos cuesta en torno a un punto. La logística es prácticamente redundante."}, "refinado": {"codigo": "def build_model():\n    from sklearn.pipeline import make_pipeline\n    from sklearn.preprocessing import StandardScaler\n    from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier\n    from sklearn.svm import SVC\n    return VotingClassifier([\n        ('et', ExtraTreesClassifier(n_estimators=400, random_state=0, n_jobs=1)),\n        ('svc', make_pipeline(StandardScaler(), SVC(C=3.0, probability=True, random_state=0))),\n    ], voting='soft')", "res": {"ok": true, "por_conjunto": {"mama": {"acc": 0.9806707033069397, "acc_sd": 0.008588584764482985, "f1": 0.9792335204221008, "f1_sd": 0.009218651242384213, "bal": 0.9769485127821191, "seg": 0.32935301820000973, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9887301587301588, "acc_sd": 0.013804961844545337, "f1": 0.9882144697631692, "f1_sd": 0.014436778625852255, "bal": 0.9885714285714287, "seg": 0.2804561843999977, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.016329931618554516, "f1": 0.95314852788537, "f1_sd": 0.01645533121061875, "bal": 0.9533333333333334, "seg": 0.26589514720000695, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9883163107397092, "acc_sd": 0.004077028578139616, "f1": 0.9883478761579607, "f1_sd": 0.004131176513465306, "bal": 0.9883130946072123, "seg": 1.0257973144000005, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7100000000000001, "acc_sd": 0.03472111109333277, "f1": 0.7091295669575706, "f1_sd": 0.033604068700706466, "bal": 0.7106514488221805, "seg": 0.5307393702000127, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9242101012220283, "f1": 0.9236147922372343, "bal": 0.9235635636232548, "seg": 0.4864482068800056}}, "aceptado": false}}, "papel": "# Diversidad de sesgos inductivos para clasificación tabular de propósito general: árboles extremos y SVC en voto blando\n\n## Resumen\nEstudiamos si un único método, sin ajuste por conjunto, puede superar a un bosque aleatorio en un benchmark tabular heterogéneo de cinco conjuntos. Tras probar tres ideas semilla y una ronda de evolución guiada por sus resultados, proponemos combinar árboles extremadamente aleatorizados, una SVC con núcleo RBF y una regresión logística mediante voto blando. El método obtiene un F1 macro medio de 0,9242 frente a 0,9163 de la referencia, con validación cruzada estratificada de 5 pliegues. Las ablaciones muestran que la mejora procede de la combinación de árboles y SVC; la regresión logística es prácticamente redundante.\n\n## 1. Introducción\nLos modelos basados en árboles siguen siendo la opción de referencia en datos tabulares (Grinsztajn et al., 2022). Sin embargo, sus fronteras escalonadas y la homogeneidad de sus votos limitan lo que aporta añadir más árboles. Partimos de las limitaciones identificadas en la referencia y buscamos un método que combine sesgos inductivos distintos.\n\n## 2. Método\nEl método promedia las probabilidades de tres modelos: 400 árboles extremadamente aleatorizados (Geurts et al., 2006), una SVC con núcleo RBF sobre variables estandarizadas (Cortes y Vapnik, 1995) y una regresión logística estandarizada. Se usa el mismo método en todos los conjuntos, sin ajustar hiperparámetros por conjunto.\n\n## 3. Configuración experimental\nCinco conjuntos: cáncer de mama, vino, iris, dígitos manuscritos y un conjunto sintético con un 8 % de etiquetas cambiadas. Métrica principal: F1 macro medio; secundaria: exactitud. Las ideas se evaluaron primero en cáncer de mama y vino con 3 pliegues, y solo las prometedoras pasaron al benchmark completo con 5 pliegues.\n\n## 4. Resultados\n{{TABLA_PRINCIPAL}}\n\nEl método mejora el F1 macro medio en 0,79 puntos y supera a la referencia en cuatro de los cinco conjuntos. En el conjunto sintético, el único con etiquetas ruidosas, queda por debajo (0,7065 frente a 0,7184). La trayectoria de la investigación se resume en la tabla siguiente: dos de las tres ideas semilla se descartaron en el subconjunto, y la idea evolucionada superó a la primera idea buena.\n\n{{TABLA_IDEAS}}\n\n## 5. Ablaciones\n{{TABLA_ABLACION}}\n\nQuitar los árboles extremos o la SVC cuesta en torno a un punto de F1; quitar la regresión logística apenas cambia el resultado. Probamos la variante sin logística y no fue estrictamente mejor, así que conservamos el método completo.\n\n## 6. Experimentos suplementarios\nEn respuesta a la revisión, repetimos la evaluación con tres semillas de validación cruzada y añadimos un conjunto con un 20 % de etiquetas ruidosas.\n\n{{TABLA_SUPLEMENTARIA}}\n\nCon tres semillas, el método mantiene su ventaja (0,9227 frente a 0,9153). En cambio, con un 20 % de etiquetas ruidosas el método queda claramente por debajo de la referencia (0,5902 frente a 0,6764): la SVC y la logística se ajustan a las etiquetas erróneas, mientras que el bosque, al promediar árboles profundos entrenados en muestras distintas, las absorbe mejor.\n\n## 7. Limitaciones\nEl benchmark es pequeño y la mejora en el benchmark principal es modesta. El resultado con etiquetas muy ruidosas muestra que el método no es una mejora general: conviene usarlo cuando las etiquetas son fiables. No se han evaluado conjuntos grandes ni variables categóricas.\n\n## 8. Conclusión\nCombinar árboles aleatorizados con un modelo de frontera suave mejora a un bosque aleatorio en el F1 medio y en cuatro de los cinco conjuntos de este benchmark, con un coste de entrenamiento moderado, pero es más sensible que la referencia a las etiquetas muy ruidosas.\n", "revisiones": [{"puntuacion": 5, "resumen": "Método sencillo y bien motivado, con ablaciones claras, pero la mejora es pequeña y no se ha comprobado su robustez.", "fortalezas": ["Procedimiento transparente: se informa de las ideas descartadas.", "Las ablaciones identifican qué componentes sostienen la mejora."], "debilidades": ["La ganancia es de menos de un punto y podría depender de la partición concreta de la validación cruzada.", "No se evalúa la robustez frente al ruido en las etiquetas, que es una de las limitaciones de partida.", "En el conjunto sintético con etiquetas ruidosas el método queda por debajo de la referencia y el texto no lo analiza.", "No se informa del coste de entrenamiento."], "preguntas": ["¿Se mantiene la ventaja con otras semillas de partición?", "¿Qué ocurre con más ruido en las etiquetas?"]}, {"puntuacion": 7, "resumen": "La revisión responde a las críticas con experimentos y, sobre todo, declara con honestidad un resultado desfavorable que delimita cuándo usar el método.", "fortalezas": ["La ventaja se mantiene con tres semillas.", "El experimento con ruido fuerte se informa aunque sea desfavorable y se explica.", "Limitaciones claras."], "debilidades": ["Benchmark pequeño y sin conjuntos grandes.", "La mejora sigue siendo modesta."], "preguntas": ["¿Podría un mecanismo de detección de ruido recuperar la ventaja en ese escenario?"]}], "replica": [{"tipo": "semillas", "motivo": "La ganancia podría depender de la partición (debilidad 1).", "titulo": "Robustez frente a la partición: tres semillas de validación cruzada", "res": [{"ok": true, "por_conjunto": {"mama": {"acc": 0.9607773120115923, "acc_sd": 0.01969734497642948, "f1": 0.9577429803853323, "f1_sd": 0.02144800030240463, "bal": 0.955277054228905, "seg": 0.30260405899999415, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9757142857142858, "acc_sd": 0.022546388450240904, "f1": 0.976210148431862, "f1_sd": 0.02197630246445155, "bal": 0.9785714285714285, "seg": 0.19333932733333464, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.948888888888889, "acc_sd": 0.03189488909868293, "f1": 0.9484869648265349, "f1_sd": 0.03239933357896995, "bal": 0.948888888888889, "seg": 0.17885902113334093, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9773682038584545, "acc_sd": 0.005556689465186825, "f1": 0.9772796690971502, "f1_sd": 0.005723615443178308, "bal": 0.9773225494401964, "seg": 0.5368455243999961, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7172222222222222, "acc_sd": 0.04019243832819092, "f1": 0.7168542081894654, "f1_sd": 0.0397311119162639, "bal": 0.7178695017719409, "seg": 0.38014617326666666, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9159941825390888, "f1": 0.9153147941860691, "bal": 0.915585884580272, "seg": 0.31835882102666646}}, {"ok": true, "por_conjunto": {"mama": {"acc": 0.9795011126636648, "acc_sd": 0.014204793043052309, "f1": 0.9778822827605139, "f1_sd": 0.015636411878649885, "bal": 0.9762979037012777, "seg": 0.3387217516666662, "n": 569, "clases": 2, "p": 30}, "vino": {"acc": 0.9905820105820105, "acc_sd": 0.01332093990232305, "f1": 0.9903975122757818, "f1_sd": 0.013616462494225889, "bal": 0.9911816578483246, "seg": 0.2951028879333402, "n": 178, "clases": 3, "p": 13}, "iris": {"acc": 0.9533333333333334, "acc_sd": 0.03173968190463488, "f1": 0.9530455380574284, "f1_sd": 0.03207404194188985, "bal": 0.9533333333333334, "seg": 0.28389160793333496, "n": 150, "clases": 3, "p": 4}, "digitos": {"acc": 0.9846012586402557, "acc_sd": 0.005648661764439647, "f1": 0.9846180122185638, "f1_sd": 0.005619026009483195, "bal": 0.9846179456767693, "seg": 1.0615706802666673, "n": 1797, "clases": 10, "p": 64}, "sintetico": {"acc": 0.7077777777777778, "acc_sd": 0.045181390247438794, "f1": 0.7076587417392678, "f1_sd": 0.044858337732366096, "bal": 0.7082683621708011, "seg": 0.5111648127333335, "n": 600, "clases": 3, "p": 20}}, "media": {"acc": 0.9231590985994085, "f1": 0.9227204174103111, "bal": 0.9227398405461011, "seg": 0.49809034810666847}}], "tabla": "| Conjunto | Referencia (F1 macro) | Método (F1 macro) |\n|---|---|---|\n| Cáncer de mama (Wisconsin) | 0.9577 | 0.9779 |\n| Vino | 0.9762 | 0.9904 |\n| Iris | 0.9485 | 0.9530 |\n| Dígitos manuscritos | 0.9773 | 0.9846 |\n| Sintético difícil | 0.7169 | 0.7077 |\n| **Media** | **0.9153** | **0.9227** |", "resumen": "F1 macro: referencia 0.9153, método 0.9227"}, {"tipo": "ruido", "motivo": "No se evalúa la robustez frente al ruido en las etiquetas (debilidad 2).", "titulo": "Conjunto adicional con un 20 % de etiquetas ruidosas", "res": [{"ok": true, "por_conjunto": {"ruidoso": {"acc": 0.678, "acc_sd": 0.036551333764994115, "f1": 0.6764396266816062, "f1_sd": 0.036771986253995984, "bal": 0.6784121648659465, "seg": 0.3891107265999949, "n": 500, "clases": 2, "p": 30}}, "media": {"acc": 0.678, "f1": 0.6764396266816062, "bal": 0.6784121648659465, "seg": 0.3891107265999949}}, {"ok": true, "por_conjunto": {"ruidoso": {"acc": 0.592, "acc_sd": 0.0556417109729742, "f1": 0.5902395566095036, "f1_sd": 0.05601500914405371, "bal": 0.5924481792717088, "seg": 0.49179057280000504, "n": 500, "clases": 2, "p": 30}}, "media": {"acc": 0.592, "f1": 0.5902395566095036, "bal": 0.5924481792717088, "seg": 0.49179057280000504}}], "tabla": "| Conjunto | Referencia (F1 macro) | Método (F1 macro) |\n|---|---|---|\n| Ruidoso (20 % de etiquetas cambiadas) | 0.6764 | 0.5902 |\n| **Media** | **0.6764** | **0.5902** |", "resumen": "F1 macro: referencia 0.6764, método 0.5902"}], "meta": {"decision": "accept", "critica": "Aceptable para su escala: el procedimiento es transparente, las ablaciones sostienen la afirmación central y el artículo delimita con honestidad cuándo no usar el método. Para una versión mayor haría falta un benchmark más amplio."}, "avisosNum": [], "consultas": 31, "tokens": 128400, "log": [{"t": "", "agente": "Programador de la referencia", "texto": "referencia · sub F1 0.9667 · completo F1 0.9163"}, {"t": "", "agente": "Extractor de limitaciones", "texto": "4 limitaciones"}, {"t": "", "agente": "Verificador de limitaciones", "texto": "falta 1: calibración para F1 macro"}, {"t": "", "agente": "Generador de ideas", "texto": "5 ideas semilla"}, {"t": "", "agente": "Comprobador de novedad", "texto": "I1=6, I4=5, I5=5, I3=4, I2=3 (se prueban las 3 primeras según el presupuesto)"}, {"t": "", "agente": "Crítico de subconjunto", "texto": "T1 good (0.91 pp)"}, {"t": "", "agente": "Crítico de conjunto completo", "texto": "T1 good (0.26 pp)"}, {"t": "", "agente": "Crítico de subconjunto", "texto": "T2 bad (-0.40 pp)"}, {"t": "", "agente": "Crítico de subconjunto", "texto": "T3 bad (-2.48 pp)"}, {"t": "", "agente": "Evolucionador de ideas", "texto": "E1.1: sustituir el boosting por una SVC RBF"}, {"t": "", "agente": "Crítico de subconjunto", "texto": "T4 good (1.56 pp)"}, {"t": "", "agente": "Crítico de conjunto completo", "texto": "T4 good (0.79 pp)"}, {"t": "", "agente": "Selector", "texto": "T4: F1 0.9242"}, {"t": "", "agente": "Crítico de ablaciones", "texto": "refine: la logística es redundante"}, {"t": "", "agente": "Comparador de resultados", "texto": "refinado rechazado: 0.9236 no supera 0.9242"}, {"t": "", "agente": "Revisor", "texto": "puntuación 5/10"}, {"t": "", "agente": "Programador de la réplica", "texto": "semillas y ruido"}, {"t": "", "agente": "Revisor", "texto": "puntuación 7/10"}, {"t": "", "agente": "Metarrevisor", "texto": "accept"}]};
+function showDemo(){ if(R.estado === 'running') return toast('Hay una investigación en curso'); R = Object.assign(R0(), JSON.parse(JSON.stringify(DEMO))); R.estado = 'done'; R.replica.forEach(x => Object.assign(x, tablaReplica(x.tipo, x.res))); seguir = false; setModo('lab'); $('cLog').innerHTML = R.log.map(l => `<div><span class="k">${esc(l.agente)}</span> · ${esc(l.texto)}</div>`).join(''); $('cSpin').style.display = 'none'; $('btnStop').style.display = 'none'; consola('Ejemplo', `Investigación real ya ejecutada · ${R.trazas.length} ideas probadas · ${R.revisiones.length} rondas de revisión`, 1); R.agentesHechos = MAPA.flatMap(g => g[1]); pintaMapa(); go(3); toast('Ejemplo real: los números salen de ejecutar el código. Recorre las pantallas.', 5000); }
+$('btnDemo').onclick = showDemo;
+$('btnStart').onclick = () => go(localStorage.getItem('ia_openai_key') ? 2 : 1);
+
+/* ══════════ ARRANQUE ══════════ */
+buildForm(); setModo('lab'); pintaMapa(); go(0);
+
+</script>
+</body>
+</html>

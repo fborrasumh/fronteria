@@ -1,5 +1,7 @@
 # FronterIA
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23003243.svg)](https://doi.org/10.5281/zenodo.23003243)
+
 **Aplicación:** https://fborrasumh.github.io/fronteria/
 
 Un equipo de agentes de IA que **investiga de forma autónoma**. Implementa a escala de navegador el marco **ScientistTwo** (Nam et al., 2026, arXiv:2609.19644). La persona plantea el problema y los agentes hacen el resto:
@@ -53,6 +55,12 @@ La app incluye una investigación real ya ejecutada:
 ## Privacidad
 
 Los experimentos y los datos propios se procesan en el navegador. El texto viaja a OpenAI con la clave del usuario, que se guarda en `localStorage` (`ia_openai_key`), y las búsquedas bibliográficas van a OpenAlex.
+
+## Cómo citar
+
+Borrás Rocher, F. (2026). *FronterIA* (versión 1.0.0) [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243
+
+El DOI es el de concepto: apunta siempre a la última versión. GitHub ofrece la cita en APA y BibTeX con el botón *Cite this repository*, a partir de `CITATION.cff`.
 
 ## Referencia del marco
 

@@ -2,69 +2,66 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23003243.svg)](https://doi.org/10.5281/zenodo.23003243)
 
-**Aplicación:** https://fborrasumh.github.io/fronteria/
+**Aplicación:** https://fborrasumh.github.io/fronteria/ · Español, English, Português
 
-Un equipo de agentes de IA que **investiga de forma autónoma**. Implementa a escala de navegador el marco **ScientistTwo** (Nam et al., 2026, arXiv:2609.19644). La persona plantea el problema y los agentes hacen el resto:
+**De tu pregunta de investigación a una propuesta revisada.** Escribes qué quieres investigar, en cualquier disciplina, y un equipo de agentes de IA hace el ciclo del marco **ScientistTwo** (Nam et al., 2026, arXiv:2609.19644):
 
-- identifican las limitaciones del estado del arte;
-- generan ideas y contrastan su novedad con trabajos reales de OpenAlex;
-- las prueban primero en un subconjunto y luego en el benchmark completo;
-- las hacen evolucionar con lo aprendido;
-- ejecutan ablaciones;
-- redactan el artículo, lo someten a un revisor simulado, responden con experimentos nuevos y pasan una metarrevisión.
+1. identifica las limitaciones del estado del arte;
+2. propone ideas y contrasta su novedad con las publicaciones más parecidas de **OpenAlex**;
+3. diseña un piloto y un estudio completo para las dos ideas más novedosas, que pasan por un crítico metodológico;
+4. planifica las ablaciones;
+5. redacta la propuesta y la somete a un revisor simulado; si la nota es menor que 7, la mejora y la vuelve a revisar.
 
-Aplicación de un solo fichero (`index.html`), sin servidor, con el diseño de la familia Forja.
+Tres pasos en pantalla (pregunta → ideas → propuesta), un botón y ningún parámetro que ajustar. Un solo fichero (`index.html`), sin servidor.
 
-> No es una aplicación de los autores de ScientistTwo. Sirve para entender el marco, enseñarlo y explorar ideas; el artículo que genera es un borrador para revisión humana.
+> No es una aplicación de los autores de ScientistTwo. La propuesta es un borrador para revisión humana.
 
-## Dos modos
+## Qué hace la IA y qué comprueba el código
 
-- **Laboratorio ejecutable.** El reto es superar a un clasificador de referencia (un bosque aleatorio) en un benchmark tabular de cinco conjuntos, con F1 macro y exactitud y validación cruzada estratificada. Se puede añadir un CSV propio. Los agentes escriben código de scikit-learn que **se ejecuta de verdad en el navegador** (Pyodide), y el artículo lleva las tablas con esos resultados.
-- **Propuesta de investigación.** Para cualquier disciplina, con el mismo ciclo sin ejecución: diseño con piloto y estudio completo, plan de ablaciones y una propuesta revisada que solo cita trabajos encontrados en OpenAlex.
-
-## El ciclo (§3 del artículo)
-
-Cada etapa sigue el mismo patrón: un **candidato**, un **crítico** que acepta, descarta o pide refinar, y un presupuesto de rondas.
-
-| Etapa | Agentes |
-|---|---|
-| Limitaciones y semillas | Extractor y verificador de limitaciones, generador de ideas, comprobador de novedad (OpenAlex) |
-| Subconjunto → completo | Programadores, críticos e ingeniero |
-| Evolución y selección | Evolucionador de ideas y selector |
-| Ablaciones | Planificador, programador y crítico de ablaciones, comparador de resultados |
-| Artículo y revisión | Redactor, revisor (escala ICLR), planificador y programador de la réplica, mejorador del borrador |
-| Metarrevisión | Metarrevisor |
-
-## Salvaguardas añadidas
-
-- Un crítico no puede dar por buena una idea que no mejora a la referencia, y lo que queda más de 2 puntos por debajo se descarta.
-- El código se revisa antes de ejecutarse: solo se permiten scikit-learn, NumPy y SciPy, sin ficheros ni red.
-- Las cifras del artículo se contrastan con los resultados reales, y las que no cuadran se marcan.
-- El refinamiento tras las ablaciones solo se adopta si es estrictamente mejor.
-- Se exporta un script de Python que reproduce los resultados fuera del navegador.
+- **La IA propone:** limitaciones, ideas, puntuación de novedad, diseños, críticas, ablaciones, la propuesta y la revisión.
+- **El código decide y comprueba:**
+  - las publicaciones cercanas vienen de OpenAlex, no de la IA;
+  - la idea elegida es la más novedosa de las que aprueba el crítico;
+  - cada cita de la propuesta, del tipo «(Apellido, año)» o «Apellido (año)», se busca entre esas publicaciones;
+  - las citas que no aparecen se marcan con ⚠;
+  - la bibliografía la escribe el código solo con las publicaciones encontradas.
 
 ## Ejemplo sin clave
 
-La app incluye una investigación real ya ejecutada:
-- la referencia obtiene un F1 de 0,9163;
-- dos ideas se descartan;
-- la idea evolucionada (árboles extremos, SVC y logística en voto blando) llega a 0,9242;
-- las ablaciones muestran que la mejora la sostienen los árboles y la SVC;
-- la réplica descubre que, con un 20 % de etiquetas ruidosas, la referencia es mejor.
+«Ver un ejemplo» enseña una investigación completa en los tres idiomas, sin usar la IA. Trata sobre una intervención para mejorar el aprendizaje de Estadística en primer curso.
+- Las publicaciones del ejemplo son reales y sus DOI están comprobados, pero se eligieron a mano: no salen de una búsqueda en OpenAlex.
+- La propuesta incluye a propósito una cita inexistente, (Smith, 2019), para mostrar cómo la marca el código.
 
 ## Privacidad
 
-Los experimentos y los datos propios se procesan en el navegador. El texto viaja a OpenAI con la clave del usuario, que se guarda en `localStorage` (`ia_openai_key`), y las búsquedas bibliográficas van a OpenAlex.
+- Tu pregunta y tus resultados se guardan solo en este navegador (IndexedDB).
+- Al investigar, la pregunta sale hacia tu proveedor de IA (OpenAI, Google Gemini o Anthropic Claude) con tu clave.
+  - Antes, se enmascaran correos y teléfonos.
+  - Antes del primer envío ves una muestra de lo que sale.
+- Hacia OpenAlex solo salen búsquedas breves en inglés.
+- Cada ejecución hace unas 10-16 consultas a la IA.
+
+## Límites
+
+- Un modelo de lenguaje estima la novedad frente a unas pocas publicaciones cercanas. No es una revisión sistemática.
+- No se ejecuta ningún experimento: los resultados de la propuesta son esperados.
+- El revisor es una IA. Su nota orienta, pero no certifica la calidad.
+- Si OpenAlex no responde, la app lo avisa y ninguna cita queda comprobada.
+
+## Novedades de la versión 2.0
+
+- Pensada para cualquier investigador: solo modo propuesta, en cualquier disciplina, sin parámetros.
+- Se retira el laboratorio ejecutable de aprendizaje automático (Pyodide), que sigue disponible en la versión 1.0.0 archivada en Zenodo.
+- Funciona con OpenAI, Gemini y Claude, y está en español, inglés y portugués.
+- Las citas de la propuesta se comprueban por código.
 
 ## Cómo citar
 
-Borrás Rocher, F. (2026). *FronterIA* (versión 1.0.0) [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243
+Borrás Rocher, F. (2026). *FronterIA* (versión 2.0.0) [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243
 
 El DOI es el de concepto: apunta siempre a la última versión. GitHub ofrece la cita en APA y BibTeX con el botón *Cite this repository*, a partir de `CITATION.cff`.
 
-## Referencia del marco
-
-Nam, J., Yoon, J., Pan, Y., Wang, Y., Meng, R., Ranganathan, P. y Pfister, T. (2026). *ScientistTwo: Pioneering the Human Knowledge Frontier with Autonomous AI*. arXiv:2609.19644.
+**Referencia del marco:** Nam, J., Yoon, J., Pan, Y., Wang, Y., Meng, R., Ranganathan, P. y Pfister, T. (2026). *ScientistTwo: Pioneering the Human Knowledge Frontier with Autonomous AI*. arXiv:2609.19644.
 
 Forma parte del catálogo [Herramientas IA para la academia](https://fborrasumh.github.io/ia/).
 

@@ -501,14 +501,14 @@ table{border-collapse:collapse;width:100%;font-size:13.8px}th{background:var(--p
     <div class="field"><label for="fProblema" data-i18n="s.problema">¿Qué quieres investigar?</label><textarea id="fProblema" rows="5" placeholder="Ej.: Muchos estudiantes de primer curso suspenden Estadística. ¿Qué intervención de bajo coste podría mejorar su aprendizaje?" data-i18n-attr="placeholder:s.problema.ph"></textarea></div>
     <div class="field"><label for="fSota" data-i18n="s.sota">Lo que ya se sabe (opcional)</label><textarea id="fSota" rows="4" placeholder="Enfoques que ya conoces, resultados previos, por qué no bastan…" data-i18n-attr="placeholder:s.sota.ph"></textarea><p class="help" data-i18n="s.sota.help">Si lo dejas vacío, los agentes parten de lo que encuentren en OpenAlex.</p></div>
     <div class="actions"><button class="btn btn-primary btn-big" id="btnInvestiga" type="button"><svg class="i"><use href="#i-rocket"/></svg><span data-i18n="s.investigar">Investigar</span></button></div>
-    <p class="help" data-i18n="s.coste">Unas 10-16 consultas a tu IA y unos minutos. Puedes detenerlo cuando quieras.</p>
+    <p class="help" data-i18n="s.coste">Unas 10-25 consultas a tu IA y unos minutos. Puedes detenerlo cuando quieras.</p>
   </div>
   <div class="card fx-prog" id="progreso" hidden aria-live="polite"></div>
 </section>
 
 <!-- 2 · IDEAS -->
 <section class="screen" data-step="2">
-  <header class="sh" style="--c:#E4572E"><div class="sh-ico"><svg class="i"><use href="#i-bulb"/></svg></div><div><p class="sh-step" data-i18n="s.paso2">Paso 2 de 3</p><h2 data-i18n="s.ideas">Limitaciones e ideas</h2><p class="sh-lede" data-i18n="s.ideas.lede">Las ideas se ordenan por novedad frente a las publicaciones más parecidas de OpenAlex (enlazadas). Las dos más novedosas pasan por un diseño y un crítico; el código elige la más novedosa de las aprobadas.</p></div></header>
+  <header class="sh" style="--c:#E4572E"><div class="sh-ico"><svg class="i"><use href="#i-bulb"/></svg></div><div><p class="sh-step" data-i18n="s.paso2">Paso 2 de 3</p><h2 data-i18n="s.ideas">Limitaciones e ideas</h2><p class="sh-lede" data-i18n="s.ideas.lede">Las ideas se ordenan por novedad frente a las publicaciones más parecidas de OpenAlex (enlazadas). Se diseñan de la más a la menos novedosa; si el crítico no aprueba un diseño, reformula la pregunta y se rediseña. Se elige la primera aprobada.</p></div></header>
   <div id="ideas"></div>
 </section>
 
@@ -1284,6 +1284,11 @@ const csvDe = (cab, filas) => '\ufeff' + [cab, ...filas].map(f => f.map(csvq).jo
 /* ══ Diccionarios de FronterIA (el español está en el HTML y en el JS). ══ */
 const I18N = {
   en: {
+    "Ninguna idea alcanzó {0}/10 con el crítico: el código sigue con la mejor puntuada ({1}/10) y la propuesta declara las objeciones pendientes.": "No idea reached {0}/10 with the critic: the code continues with the best-scored one ({1}/10) and the proposal states the outstanding objections.",
+    "Pregunta reformulada": "Rephrased question",
+    "con reservas": "with reservations",
+    "reformulada": "rephrased",
+    "no aprobada": "not approved",
     "title": "FronterIA · From your question to a reviewed research proposal",
     "hero.eyebrow": "Agent-assisted research · Miguel Hernández University of Elche",
     "hero.h1": "From your research question to a <em>reviewed proposal</em>",
@@ -1312,9 +1317,9 @@ const I18N = {
     "s.sota.ph": "Approaches you already know, previous results, why they are not enough…",
     "s.sota.help": "If you leave it empty, the agents start from what they find in OpenAlex.",
     "s.investigar": "Research",
-    "s.coste": "About 10–16 queries to your AI and a few minutes. You can stop it whenever you like.",
+    "s.coste": "About 10–25 queries to your AI and a few minutes. You can stop it whenever you like.",
     "s.ideas": "Limitations and ideas",
-    "s.ideas.lede": "Ideas are ranked by novelty against the most similar OpenAlex publications (linked). The two most novel go through a design and a critic; the code chooses the most novel of the approved ones.",
+    "s.ideas.lede": "Ideas are ranked by novelty against the most similar OpenAlex publications (linked). They are designed from most to least novel; if the critic does not approve a design, it rephrases the question and the design is redone. The first approved one is chosen.",
     "s.propuesta": "Reviewed proposal",
     "s.propuesta.lede": "It is a draft for your review, not finished work. References that do not match a publication found are marked ⚠ and are left out of the bibliography.",
     "s.registro": "Full log (JSON)",
@@ -1333,7 +1338,7 @@ const I18N = {
     "¿Qué hace?": "What does it do?",
     "Convierte tu pregunta de investigación en una propuesta revisada. Un equipo de agentes de IA busca las limitaciones del estado del arte, propone ideas, contrasta su novedad con publicaciones reales, diseña el estudio, planifica las ablaciones, redacta la propuesta y la somete a un revisor.": "It turns your research question into a reviewed proposal. A team of AI agents looks for the limitations of the state of the art, proposes ideas, checks their novelty against real publications, designs the study, plans the ablations, writes the proposal and submits it to a reviewer.",
     "El ciclo ScientistTwo": "The ScientistTwo cycle",
-    "Cada etapa tiene un candidato y un crítico. Las dos ideas más novedosas reciben un diseño con piloto y estudio completo; un crítico metodológico las aprueba, las descarta o pide ajustarlas (una vez). Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.": "Each stage has a candidate and a critic. The two most novel ideas get a design with a pilot and a full study; a methodological critic approves them, discards them or asks for an adjustment (once). If the reviewer gives less than 7 out of 10, the proposal is improved and reviewed again.",
+    "Cada etapa tiene un candidato y un crítico. Las ideas, de la más a la menos novedosa, reciben un diseño con piloto y estudio completo que puntúa un crítico metodológico. Si no llega a 6 sobre 10, el crítico reformula la pregunta y dice qué cambiar, y se rediseña (hasta 3 veces por idea). El proceso no se detiene: si ninguna idea se aprueba, sigue con la mejor puntuada y la propuesta declara las objeciones. Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.": "Each stage has a candidate and a critic. The ideas, from most to least novel, get a design with a pilot and a full study, which a methodological critic scores. If it does not reach 6 out of 10, the critic rephrases the question and says what to change, and the design is redone (up to 3 times per idea). The process never stops: if no idea is approved, it continues with the best-scored one and the proposal states the objections. If the reviewer gives less than 7 out of 10, the proposal is improved and reviewed again.",
     "Qué comprueba el código": "What the code checks",
     "Las publicaciones cercanas vienen de OpenAlex, no de la IA. La idea elegida la decide el código (la más novedosa de las aprobadas). Cada cita de la propuesta se busca en esas publicaciones: las que no aparecen se marcan con ⚠ y la bibliografía la escribe el código solo con las encontradas.": "The nearby publications come from OpenAlex, not from the AI. The code decides the chosen idea (the most novel of the approved ones). Each citation in the proposal is looked up among those publications: those not found are marked ⚠, and the code writes the bibliography with only the ones found.",
     "Límites": "Limits",
@@ -1353,8 +1358,6 @@ const I18N = {
     "Se detuvo": "Stopped",
     "Terminado": "Finished",
     "aprobada": "approved",
-    "descartada": "discarded",
-    "ajustar": "adjust",
     "sin diseñar": "not designed",
     "Hipótesis": "Hypothesis",
     "Piloto": "Pilot",
@@ -1372,13 +1375,12 @@ const I18N = {
     "Agente: {0} · consultas a la IA: {1}": "Agent: {0} · AI queries: {1}",
     "Detener": "Stop",
     "Se detendrá al terminar la consulta en curso": "It will stop when the current query ends",
-    "Tu pregunta saldrá hacia {0} (unas 10-16 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.": "Your question will go to {0} (about 10–16 queries). {1} personal data item(s) have been masked. Only short searches in English go to OpenAlex.",
+    "Tu pregunta saldrá hacia {0} (unas 10-25 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.": "Your question will go to {0} (about 10–25 queries). {1} personal data item(s) have been masked. Only short searches in English go to OpenAlex.",
     "Muestra del envío:": "Sample of what is sent:",
     "Detenido por ti. Lo hecho hasta aquí se conserva.": "Stopped by you. What has been done so far is kept.",
     "Describe tu pregunta con al menos unas 12 palabras": "Describe your question in at least about 12 words",
     "La IA no devolvió limitaciones. Prueba otra vez o con otro modelo.": "The AI returned no limitations. Try again or with another model.",
     "La IA no devolvió ideas. Prueba otra vez o con otro modelo.": "The AI returned no ideas. Try again or with another model.",
-    "El crítico no aprobó ninguno de los diseños. Revisa sus comentarios en «Ideas» y reformula la pregunta.": "The critic approved none of the designs. Read its comments in “Ideas” and rephrase the question.",
     "El código eligió la idea más novedosa ({0}/10) de las aprobadas por el crítico.": "The code chose the most novel idea ({0}/10) among those approved by the critic.",
     "Investigación terminada": "Research finished",
     "Aún no hay ideas. Escribe tu pregunta en el paso anterior, o mira el ejemplo.": "No ideas yet. Write your question in the previous step, or look at the example.",
@@ -1416,6 +1418,11 @@ const I18N = {
     "Búsqueda en OpenAlex": "OpenAlex search"
   },
   pt: {
+    "Ninguna idea alcanzó {0}/10 con el crítico: el código sigue con la mejor puntuada ({1}/10) y la propuesta declara las objeciones pendientes.": "Nenhuma ideia atingiu {0}/10 com o crítico: o código continua com a mais bem pontuada ({1}/10) e a proposta declara as objeções pendentes.",
+    "Pregunta reformulada": "Pergunta reformulada",
+    "con reservas": "com reservas",
+    "reformulada": "reformulada",
+    "no aprobada": "não aprovada",
     "title": "FronterIA · Da sua pergunta a uma proposta de investigação revista",
     "hero.eyebrow": "Investigação assistida por agentes · Universidade Miguel Hernández de Elche",
     "hero.h1": "Da sua pergunta de investigação a uma <em>proposta revista</em>",
@@ -1444,9 +1451,9 @@ const I18N = {
     "s.sota.ph": "Abordagens que já conhece, resultados anteriores, porque não bastam…",
     "s.sota.help": "Se o deixar vazio, os agentes partem do que encontrarem no OpenAlex.",
     "s.investigar": "Investigar",
-    "s.coste": "Cerca de 10-16 consultas à sua IA e alguns minutos. Pode pará-lo quando quiser.",
+    "s.coste": "Cerca de 10-25 consultas à sua IA e alguns minutos. Pode pará-lo quando quiser.",
     "s.ideas": "Limitações e ideias",
-    "s.ideas.lede": "As ideias são ordenadas por novidade face às publicações mais parecidas do OpenAlex (com ligação). As duas mais inovadoras passam por um desenho e um crítico; o código escolhe a mais inovadora das aprovadas.",
+    "s.ideas.lede": "As ideias são ordenadas por novidade face às publicações mais parecidas do OpenAlex (com ligação). São desenhadas da mais à menos inovadora; se o crítico não aprovar um desenho, reformula a pergunta e o desenho é refeito. Escolhe-se a primeira aprovada.",
     "s.propuesta": "Proposta revista",
     "s.propuesta.lede": "É um rascunho para a sua revisão, não um trabalho terminado. As referências que não correspondem a uma publicação encontrada são marcadas com ⚠ e não entram na bibliografia.",
     "s.registro": "Registo completo (JSON)",
@@ -1465,7 +1472,7 @@ const I18N = {
     "¿Qué hace?": "O que faz?",
     "Convierte tu pregunta de investigación en una propuesta revisada. Un equipo de agentes de IA busca las limitaciones del estado del arte, propone ideas, contrasta su novedad con publicaciones reales, diseña el estudio, planifica las ablaciones, redacta la propuesta y la somete a un revisor.": "Transforma a sua pergunta de investigação numa proposta revista. Uma equipa de agentes de IA procura as limitações do estado da arte, propõe ideias, verifica a sua novidade com publicações reais, desenha o estudo, planeia as ablações, redige a proposta e submete-a a um revisor.",
     "El ciclo ScientistTwo": "O ciclo ScientistTwo",
-    "Cada etapa tiene un candidato y un crítico. Las dos ideas más novedosas reciben un diseño con piloto y estudio completo; un crítico metodológico las aprueba, las descarta o pide ajustarlas (una vez). Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.": "Cada etapa tem um candidato e um crítico. As duas ideias mais inovadoras recebem um desenho com piloto e estudo completo; um crítico metodológico aprova-as, descarta-as ou pede um ajuste (uma vez). Se o revisor der menos de 7 em 10, a proposta é melhorada e revista de novo.",
+    "Cada etapa tiene un candidato y un crítico. Las ideas, de la más a la menos novedosa, reciben un diseño con piloto y estudio completo que puntúa un crítico metodológico. Si no llega a 6 sobre 10, el crítico reformula la pregunta y dice qué cambiar, y se rediseña (hasta 3 veces por idea). El proceso no se detiene: si ninguna idea se aprueba, sigue con la mejor puntuada y la propuesta declara las objeciones. Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.": "Cada etapa tem um candidato e um crítico. As ideias, da mais à menos inovadora, recebem um desenho com piloto e estudo completo, pontuado por um crítico metodológico. Se não chegar a 6 em 10, o crítico reformula a pergunta e diz o que mudar, e o desenho é refeito (até 3 vezes por ideia). O processo não para: se nenhuma ideia for aprovada, continua com a mais bem pontuada e a proposta declara as objeções. Se o revisor der menos de 7 em 10, a proposta é melhorada e revista de novo.",
     "Qué comprueba el código": "O que o código verifica",
     "Las publicaciones cercanas vienen de OpenAlex, no de la IA. La idea elegida la decide el código (la más novedosa de las aprobadas). Cada cita de la propuesta se busca en esas publicaciones: las que no aparecen se marcan con ⚠ y la bibliografía la escribe el código solo con las encontradas.": "As publicações próximas vêm do OpenAlex, não da IA. É o código que decide a ideia escolhida (a mais inovadora das aprovadas). Cada citação da proposta é procurada nessas publicações: as que não aparecem são marcadas com ⚠ e a bibliografia é escrita pelo código só com as encontradas.",
     "Límites": "Limites",
@@ -1485,8 +1492,6 @@ const I18N = {
     "Se detuvo": "Parou",
     "Terminado": "Terminado",
     "aprobada": "aprovada",
-    "descartada": "descartada",
-    "ajustar": "ajustar",
     "sin diseñar": "sem desenho",
     "Hipótesis": "Hipótese",
     "Piloto": "Piloto",
@@ -1504,13 +1509,12 @@ const I18N = {
     "Agente: {0} · consultas a la IA: {1}": "Agente: {0} · consultas à IA: {1}",
     "Detener": "Parar",
     "Se detendrá al terminar la consulta en curso": "Vai parar quando terminar a consulta em curso",
-    "Tu pregunta saldrá hacia {0} (unas 10-16 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.": "A sua pergunta seguirá para {0} (cerca de 10-16 consultas). Foram mascarados {1} dado(s) pessoais. Para o OpenAlex seguem apenas pesquisas breves em inglês.",
+    "Tu pregunta saldrá hacia {0} (unas 10-25 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.": "A sua pergunta seguirá para {0} (cerca de 10-25 consultas). Foram mascarados {1} dado(s) pessoais. Para o OpenAlex seguem apenas pesquisas breves em inglês.",
     "Muestra del envío:": "Amostra do envio:",
     "Detenido por ti. Lo hecho hasta aquí se conserva.": "Parado por si. O que foi feito até aqui mantém-se.",
     "Describe tu pregunta con al menos unas 12 palabras": "Descreva a sua pergunta com pelo menos umas 12 palavras",
     "La IA no devolvió limitaciones. Prueba otra vez o con otro modelo.": "A IA não devolveu limitações. Tente de novo ou com outro modelo.",
     "La IA no devolvió ideas. Prueba otra vez o con otro modelo.": "A IA não devolveu ideias. Tente de novo ou com outro modelo.",
-    "El crítico no aprobó ninguno de los diseños. Revisa sus comentarios en «Ideas» y reformula la pregunta.": "O crítico não aprovou nenhum dos desenhos. Reveja os seus comentários em «Ideias» e reformule a pergunta.",
     "El código eligió la idea más novedosa ({0}/10) de las aprobadas por el crítico.": "O código escolheu a ideia mais inovadora ({0}/10) das aprovadas pelo crítico.",
     "Investigación terminada": "Investigação terminada",
     "Aún no hay ideas. Escribe tu pregunta en el paso anterior, o mira el ejemplo.": "Ainda não há ideias. Escreva a sua pergunta no passo anterior, ou veja o exemplo.",
@@ -1557,14 +1561,14 @@ const NAV = [['Empezar', 'Prueba con el ejemplo: no necesita clave.'], ['Siguien
 const RENDER = {0: pintaInicio, 1: pintaPregunta, 2: pintaIdeas, 3: pintaPropuesta};
 const GLOS = [
   ['¿Qué hace?', 'Convierte tu pregunta de investigación en una propuesta revisada. Un equipo de agentes de IA busca las limitaciones del estado del arte, propone ideas, contrasta su novedad con publicaciones reales, diseña el estudio, planifica las ablaciones, redacta la propuesta y la somete a un revisor.'],
-  ['El ciclo ScientistTwo', 'Cada etapa tiene un candidato y un crítico. Las dos ideas más novedosas reciben un diseño con piloto y estudio completo; un crítico metodológico las aprueba, las descarta o pide ajustarlas (una vez). Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.'],
+  ['El ciclo ScientistTwo', 'Cada etapa tiene un candidato y un crítico. Las ideas, de la más a la menos novedosa, reciben un diseño con piloto y estudio completo que puntúa un crítico metodológico. Si no llega a 6 sobre 10, el crítico reformula la pregunta y dice qué cambiar, y se rediseña (hasta 3 veces por idea). El proceso no se detiene: si ninguna idea se aprueba, sigue con la mejor puntuada y la propuesta declara las objeciones. Si el revisor da menos de 7 sobre 10, la propuesta se mejora y se vuelve a revisar.'],
   ['Qué comprueba el código', 'Las publicaciones cercanas vienen de OpenAlex, no de la IA. La idea elegida la decide el código (la más novedosa de las aprobadas). Cada cita de la propuesta se busca en esas publicaciones: las que no aparecen se marcan con ⚠ y la bibliografía la escribe el código solo con las encontradas.'],
   ['Límites', 'La novedad la estima la IA frente a unas pocas publicaciones cercanas: no es una revisión sistemática. No se ejecuta ningún experimento: es una propuesta, con resultados esperados. Es un borrador para tu revisión; el revisor es simulado.'],
   ['Privacidad', 'Tu pregunta se guarda solo en este navegador. Al investigar, sale hacia tu proveedor de IA con correos y teléfonos enmascarados (antes del primer envío ves lo que sale), y salen búsquedas breves en inglés hacia OpenAlex.'],
   ['Tu clave de IA', 'Funciona con OpenAI, Google Gemini o Anthropic Claude. La clave se guarda solo en este navegador. Un modelo económico basta.'],
   ['Cómo citar', 'Borrás Rocher, F. (2026). FronterIA [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243 · Marco: Nam, J. et al. (2026). ScientistTwo. arXiv:2609.19644.']
 ];
-const N_IDEAS = 4, N_PRUEBA = 2, UMBRAL = 7;
+const N_IDEAS = 4, UMBRAL = 7, APRUEBA = 6, RONDAS = 3, MAX_CRITICAS = 8;
 let S = {problema: '', sota: '', run: null, esEjemplo: false};
 let ENVIO_OK = false, PARAR = false, busy = false;
 
@@ -1613,8 +1617,7 @@ const EJ_T = {
       ['Tutoría entre iguales con roles rotativos', 'Explicar a un compañero consolida el aprendizaje del tutor y del tutorado.', 'L4', 5, 'La tutoría entre iguales está muy estudiada (Topping, 2005).'],
       ['Autoexplicación guiada con preguntas de predicción', 'Pedir una predicción y una explicación antes de ver la solución mejora la comprensión.', 'L3', 4, 'La autoexplicación está muy documentada (Chi, 1994).']],
     dis: {pregunta: '¿Mejoran los cuestionarios semanales espaciados con feedback inmediato la nota del examen final frente a las hojas de problemas habituales?', hipotesis: 'El grupo con práctica espaciada obtendrá una nota final más alta y retendrá más a las seis semanas.', piloto: 'Un grupo de prácticas (unos 30 estudiantes) durante 4 semanas: viabilidad, tiempo de respuesta y aceptación.', estudio_completo: 'Diseño cuasiexperimental con dos grupos de teoría del mismo curso (unos 120 por grupo), uno con cuestionarios y otro con hojas; pretest de conocimientos previos.', variables: ['Nota del examen final', 'Retención a las 6 semanas', 'Conocimientos previos (covariable)'], metricas: ['Diferencia de medias ajustada', 'Tamaño del efecto'], analisis: 'ANCOVA con el pretest como covariable; análisis por intención de tratar.', criterio_exito: 'Diferencia ajustada con un tamaño del efecto de al menos 0,3.', riesgos: ['Contaminación entre grupos', 'Baja participación en los cuestionarios']},
-    critica1: ['engineer', 'Falta controlar el tiempo de estudio total: el grupo experimental podría mejorar solo por estudiar más. Igualad el tiempo de práctica.'], critica2: ['good', 'Con el tiempo de práctica igualado y el pretest, el diseño es viable y la comparación es justa.'],
-    dis2: {pregunta: '¿Facilita la retirada gradual de pasos la transición al problema completo?', piloto: 'Dos sesiones con un grupo de prácticas.', estudio_completo: 'Comparación con ejemplos completos en dos grupos.', analisis: 'Comparación de medias.', criterio_exito: 'Mejor rendimiento en problemas nuevos.'}, critica3: ['bad', 'El efecto ya está bien establecido y el diseño no aporta una pregunta nueva.'],
+    critica1: ['engineer', 'Falta controlar el tiempo de estudio total: el grupo experimental podría mejorar solo por estudiar más. Igualad el tiempo de práctica.', '¿Mejoran los cuestionarios semanales espaciados con feedback inmediato la nota del examen final frente a las hojas de problemas, con el mismo tiempo de práctica en ambos grupos?'], critica2: ['good', 'Con el tiempo de práctica igualado y el pretest, el diseño es viable y la comparación es justa.'],
     motivo: 'El código eligió la idea más novedosa (8/10) de las aprobadas por el crítico.',
     abl: [['Sin espaciado', 'Espaciado', 'Si se concentran los cuestionarios antes del examen, la ventaja se reduce.', 'Retención a las 6 semanas'], ['Sin feedback inmediato', 'Feedback', 'Con la corrección diferida una semana, la ventaja se reduce.', 'Nota del examen final'], ['Sin recuperación (relectura)', 'Recuperación', 'Releer soluciones en lugar de responder elimina casi toda la ventaja.', 'Nota del examen final']],
     prop: `# Práctica de recuperación espaciada con feedback inmediato en Estadística de primer curso
@@ -1649,8 +1652,7 @@ Una intervención barata y escalable a grupos grandes, transferible a otras asig
       ['Peer tutoring with rotating roles', 'Explaining to a peer consolidates learning for tutor and tutee.', 'L4', 5, 'Peer tutoring is widely studied (Topping, 2005).'],
       ['Guided self-explanation with prediction prompts', 'Asking for a prediction and an explanation before seeing the solution improves understanding.', 'L3', 4, 'Self-explanation is well documented (Chi, 1994).']],
     dis: {pregunta: 'Do spaced weekly quizzes with immediate feedback improve the final exam grade compared with the usual problem sheets?', hipotesis: 'The spaced-practice group will obtain a higher final grade and retain more after six weeks.', piloto: 'One lab group (about 30 students) for 4 weeks: feasibility, response time and acceptance.', estudio_completo: 'Quasi-experimental design with two lecture groups of the same year (about 120 each), one with quizzes and one with sheets; prior-knowledge pretest.', variables: ['Final exam grade', 'Retention after 6 weeks', 'Prior knowledge (covariate)'], metricas: ['Adjusted mean difference', 'Effect size'], analisis: 'ANCOVA with the pretest as covariate; intention-to-treat analysis.', criterio_exito: 'Adjusted difference with an effect size of at least 0.3.', riesgos: ['Contamination between groups', 'Low quiz participation']},
-    critica1: ['engineer', 'Total study time is not controlled: the experimental group might improve just by studying more. Equalise practice time.'], critica2: ['good', 'With practice time equalised and the pretest, the design is feasible and the comparison is fair.'],
-    dis2: {pregunta: 'Does gradual fading of steps ease the transition to full problems?', piloto: 'Two sessions with one lab group.', estudio_completo: 'Comparison with complete examples in two groups.', analisis: 'Comparison of means.', criterio_exito: 'Better performance on new problems.'}, critica3: ['bad', 'The effect is already well established and the design does not raise a new question.'],
+    critica1: ['engineer', 'Total study time is not controlled: the experimental group might improve just by studying more. Equalise practice time.', 'Do spaced weekly quizzes with immediate feedback improve the final exam grade compared with problem sheets, with the same practice time in both groups?'], critica2: ['good', 'With practice time equalised and the pretest, the design is feasible and the comparison is fair.'],
     motivo: 'The code chose the most novel idea (8/10) among those approved by the critic.',
     abl: [['Without spacing', 'Spacing', 'If quizzes are massed before the exam, the advantage shrinks.', 'Retention after 6 weeks'], ['Without immediate feedback', 'Feedback', 'With correction delayed by a week, the advantage shrinks.', 'Final exam grade'], ['Without retrieval (rereading)', 'Retrieval', 'Rereading solutions instead of answering removes almost all the advantage.', 'Final exam grade']],
     prop: `# Spaced retrieval practice with immediate feedback in first-year Statistics
@@ -1685,8 +1687,7 @@ A cheap intervention that scales to large groups and transfers to other quantita
       ['Tutoria entre pares com papéis rotativos', 'Explicar a um colega consolida a aprendizagem do tutor e do tutorando.', 'L4', 5, 'A tutoria entre pares está muito estudada (Topping, 2005).'],
       ['Autoexplicação guiada com perguntas de previsão', 'Pedir uma previsão e uma explicação antes de ver a solução melhora a compreensão.', 'L3', 4, 'A autoexplicação está muito documentada (Chi, 1994).']],
     dis: {pregunta: 'Os questionários semanais espaçados com feedback imediato melhoram a nota do exame final face às fichas de problemas habituais?', hipotesis: 'O grupo com prática espaçada obterá uma nota final mais alta e reterá mais às seis semanas.', piloto: 'Um grupo de práticas (cerca de 30 estudantes) durante 4 semanas: viabilidade, tempo de resposta e aceitação.', estudio_completo: 'Desenho quase-experimental com duas turmas teóricas do mesmo ano (cerca de 120 cada), uma com questionários e outra com fichas; pré-teste de conhecimentos prévios.', variables: ['Nota do exame final', 'Retenção às 6 semanas', 'Conhecimentos prévios (covariável)'], metricas: ['Diferença de médias ajustada', 'Tamanho do efeito'], analisis: 'ANCOVA com o pré-teste como covariável; análise por intenção de tratar.', criterio_exito: 'Diferença ajustada com um tamanho do efeito de pelo menos 0,3.', riesgos: ['Contaminação entre grupos', 'Baixa participação nos questionários']},
-    critica1: ['engineer', 'Falta controlar o tempo total de estudo: o grupo experimental poderia melhorar apenas por estudar mais. Igualem o tempo de prática.'], critica2: ['good', 'Com o tempo de prática igualado e o pré-teste, o desenho é viável e a comparação é justa.'],
-    dis2: {pregunta: 'A retirada gradual de passos facilita a transição para o problema completo?', piloto: 'Duas sessões com um grupo de práticas.', estudio_completo: 'Comparação com exemplos completos em dois grupos.', analisis: 'Comparação de médias.', criterio_exito: 'Melhor desempenho em problemas novos.'}, critica3: ['bad', 'O efeito já está bem estabelecido e o desenho não traz uma pergunta nova.'],
+    critica1: ['engineer', 'Falta controlar o tempo total de estudo: o grupo experimental poderia melhorar apenas por estudar mais. Igualem o tempo de prática.', 'Os questionários semanais espaçados com feedback imediato melhoram a nota do exame final face às fichas de problemas, com o mesmo tempo de prática em ambos os grupos?'], critica2: ['good', 'Com o tempo de prática igualado e o pré-teste, o desenho é viável e a comparação é justa.'],
     motivo: 'O código escolheu a ideia mais inovadora (8/10) das aprovadas pelo crítico.',
     abl: [['Sem espaçamento', 'Espaçamento', 'Se os questionários se concentrarem antes do exame, a vantagem diminui.', 'Retenção às 6 semanas'], ['Sem feedback imediato', 'Feedback', 'Com a correção adiada uma semana, a vantagem diminui.', 'Nota do exame final'], ['Sem recuperação (releitura)', 'Recuperação', 'Reler soluções em vez de responder elimina quase toda a vantagem.', 'Nota do exame final']],
     prop: `# Prática de recuperação espaçada com feedback imediato em Estatística do primeiro ano
@@ -1719,8 +1720,7 @@ Uma intervenção barata e escalável a turmas grandes, transferível para outra
 function runEjemplo() {
   const e = EJ_T[LANG] || EJ_T.es, cer = [[0, 2, 1], [3, 5], [4], [5, 3]];
   const ideas = e.ideas.map((x, i) => ({id: 'I' + (i + 1), titulo: x[0], hipotesis: x[1], limitacion: x[2], novedad: x[3], justif: x[4], cercanos: cer[i].map(R_), estado: 'pend'}));
-  ideas[0].estado = 'good'; ideas[0].diseno = e.dis; ideas[0].criticas = [{decision: e.critica1[0], feedback: e.critica1[1]}, {decision: e.critica2[0], feedback: e.critica2[1]}];
-  ideas[1].estado = 'bad'; ideas[1].diseno = e.dis2; ideas[1].criticas = [{decision: e.critica3[0], feedback: e.critica3[1]}];
+  ideas[0].estado = 'good'; ideas[0].diseno = {...e.dis, pregunta: e.critica1[2]}; ideas[0].criticas = [{puntuacion: 5, decision: 'engineer', feedback: e.critica1[1], reformulacion: e.critica1[2]}, {puntuacion: 7, decision: 'good', feedback: e.critica2[1]}];
   const rv = r => ({puntuacion: r[0], resumen: r[1], fortalezas: r[2], debilidades: r[3]});
   const final = e.prop + e.mejora;
   return {lang: LANG, fecha: '2026-11-04', limit: e.limit.map(l => ({texto: l[0], evidencia: l[1]})), ideas, elegida: 'I1', motivo: e.motivo,
@@ -1751,7 +1751,7 @@ function pintaProgreso() {
 }
 function pideEnvio(textoEnviado, masks) {
   if (ENVIO_OK) return Promise.resolve(true);
-  $('envioInfo').innerHTML = `<p class="sub" style="margin-top:0">${esc(t('Tu pregunta saldrá hacia {0} (unas 10-16 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.', PROV[getProv()].n, masks))}</p><p class="help">${esc(t('Muestra del envío:'))}</p>`;
+  $('envioInfo').innerHTML = `<p class="sub" style="margin-top:0">${esc(t('Tu pregunta saldrá hacia {0} (unas 10-25 consultas). Se han enmascarado {1} dato(s) personales. A OpenAlex solo salen búsquedas breves en inglés.', PROV[getProv()].n, masks))}</p><p class="help">${esc(t('Muestra del envío:'))}</p>`;
   $('envioTxt').textContent = textoEnviado.slice(0, 3000);
   $('envioOk').checked = false; $('envioSi').disabled = true; $('mEnvio').classList.add('on');
   return new Promise(r => { envioRes = r; });
@@ -1798,22 +1798,32 @@ async function investiga() {
     (nv.puntuaciones || []).forEach(p => { const it = R.ideas.find(x => x.id === p.id); if (it) { it.novedad = Math.max(1, Math.min(10, Math.round(+p.novedad || 0))) || null; it.justif = String(p.justificacion || ''); } });
     R.ideas.sort((a, b) => (b.novedad || 0) - (a.novedad || 0));
     fase(3);
-    for (const it of R.ideas.slice(0, N_PRUEBA)) {
-      it.criticas = []; let fb = '';
-      for (let k = 0; k < 2; k++) {
-        const d = await agente('Diseñador del estudio', 'Diseñas el plan de una idea: primero un PILOTO pequeño y, si funciona, el ESTUDIO COMPLETO. Sé concreto: población, muestra, variables, análisis y criterio de éxito. No inventes resultados.', `IDEA: ${it.titulo}\n${it.hipotesis}${fb ? '\nCRÍTICA ANTERIOR (corrígela): ' + fb : ''}\n\nDevuelve {"pregunta":"...","hipotesis":"...","piloto":"...","estudio_completo":"...","variables":["..."],"metricas":["..."],"analisis":"...","criterio_exito":"...","riesgos":["..."]}`);
+    /* diseño ↔ crítico, sin parar nunca: las ideas se prueban por orden de novedad; si el crítico no aprueba (nota < APRUEBA),
+       él mismo reformula la pregunta y dice qué cambiar, y se rediseña (hasta RONDAS por idea). La primera aprobada es la
+       más novedosa de las aprobadas. Si se agotan las rondas (MAX_CRITICAS en total), el código sigue con el diseño mejor
+       puntuado, «con reservas», y la propuesta declara las objeciones pendientes. */
+    let usadas = 0, b = null;
+    for (const it of R.ideas) {
+      if (usadas >= MAX_CRITICAS) break;
+      it.criticas = []; let ref = null;
+      for (let k = 0; k < RONDAS && usadas < MAX_CRITICAS; k++, usadas++) {
+        const d = await agente('Diseñador del estudio', 'Diseñas el plan de una idea: primero un PILOTO pequeño y, si funciona, el ESTUDIO COMPLETO. Sé concreto: población, muestra, variables, análisis y criterio de éxito. No inventes resultados.', `IDEA: ${it.titulo}\n${it.hipotesis}${ref ? `\n\nEL CRÍTICO HA REFORMULADO LA PREGUNTA (úsala tal cual): ${ref.reformulacion}\nCAMBIOS QUE PIDE: ${ref.cambios}\nPROBLEMAS QUE DEBES RESOLVER: ${ref.problemas.join(' | ')}` : ''}\n\nDevuelve {"pregunta":"...","hipotesis":"...","piloto":"...","estudio_completo":"...","variables":["..."],"metricas":["..."],"analisis":"...","criterio_exito":"...","riesgos":["..."]}`);
         it.diseno = d;
-        const c = await agente('Crítico metodológico', 'Eres un revisor metodológico exigente. Juzgas la validez y la viabilidad del diseño (no hay resultados): "good" si es sólido, "bad" si la idea no se sostiene, "engineer" si se puede arreglar (di cómo).', `DISEÑO:\n${JSON.stringify(d)}\n\nDevuelve {"decision":"good|bad|engineer","feedback":"..."}`);
-        const dec = ['good', 'bad', 'engineer'].includes(c.decision) ? c.decision : 'engineer';
-        it.criticas.push({decision: dec, feedback: String(c.feedback || '')}); fb = c.feedback || '';
-        if (dec !== 'engineer') { it.estado = dec; break; }
-        it.estado = 'bad';   // si tras el ajuste sigue sin aprobarse, se descarta
+        const c = await agente('Crítico metodológico', `Eres un revisor metodológico constructivo. Juzgas la validez y la viabilidad del diseño (aún no hay resultados) con una nota de 1 a 10; ${APRUEBA} o más significa que se puede llevar a cabo tal como está, con riesgos asumibles. Si la nota es menor, NO te limites a rechazar: reformula la pregunta de investigación para que sea viable y concreta, y di exactamente qué cambiar en el diseño.`, `IDEA: ${it.titulo}\nDISEÑO:\n${JSON.stringify(d)}\n\nDevuelve {"puntuacion":5,"problemas":["..."],"reformulacion":"pregunta de investigación reformulada","cambios":"qué cambiar en el diseño"}`);
+        const nota = Math.max(1, Math.min(10, Math.round(+c.puntuacion || 0))), cr = {puntuacion: nota, decision: nota >= APRUEBA ? 'good' : 'engineer', problemas: lista(c.problemas), reformulacion: String(c.reformulacion || ''), cambios: String(c.cambios || '')};
+        cr.feedback = cr.problemas.join(' · '); it.criticas.push(cr); it.nota = Math.max(it.nota || 0, nota);
+        if (cr.decision === 'good') { it.estado = 'good'; break; }
+        it.estado = 'bad'; ref = cr; await guardaYa();
+        if (!cr.reformulacion && !cr.cambios) break;   // sin propuesta de arreglo no tiene sentido rediseñar
       }
+      if (it.estado === 'good') { b = it; break; }
     }
-    /* el código elige: la más novedosa de las aprobadas */
-    const ok = R.ideas.filter(i => i.estado === 'good');
-    if (!ok.length) throw new Error(t('El crítico no aprobó ninguno de los diseños. Revisa sus comentarios en «Ideas» y reformula la pregunta.'));
-    const b = ok[0]; R.elegida = b.id; R.motivo = t('El código eligió la idea más novedosa ({0}/10) de las aprobadas por el crítico.', b.novedad ?? '–');
+    if (b) { R.elegida = b.id; R.motivo = t('El código eligió la idea más novedosa ({0}/10) de las aprobadas por el crítico.', b.novedad ?? '–'); }
+    else {   /* ninguna aprobada: no se para; sigue con la mejor puntuada y declara las objeciones */
+      b = R.ideas.filter(i => i.criticas?.length).sort((x, y) => (y.nota || 0) - (x.nota || 0))[0];
+      b.estado = 'reservas'; R.elegida = b.id; R.reservas = b.criticas.at(-1).problemas;
+      R.motivo = t('Ninguna idea alcanzó {0}/10 con el crítico: el código sigue con la mejor puntuada ({1}/10) y la propuesta declara las objeciones pendientes.', APRUEBA, b.nota);
+    }
     fase(4);
     const pl = await agente('Planificador de ablaciones', 'Diseñas las ablaciones del estudio: qué componente se quita en cada condición, qué se espera y cómo se medirá.', `DISEÑO ELEGIDO:\n${JSON.stringify(b.diseno)}\n\nDevuelve {"ablaciones":[{"nombre":"Sin X","componente":"X","hipotesis":"...","medida":"..."}]} (2 a 4).`);
     R.abl = (pl.ablaciones || pl.planes || []).filter(a => a && a.nombre).slice(0, 4).map(a => ({nombre: String(a.nombre), componente: String(a.componente || ''), hipotesis: String(a.hipotesis || ''), medida: String(a.medida || '')}));
@@ -1821,7 +1831,7 @@ async function investiga() {
     R.refs = R.ideas.flatMap(i => i.cercanos).filter((w, i, a) => a.findIndex(x => x.titulo === w.titulo) === i).slice(0, 14);
     const refsTx = R.refs.map(w => `- (${clave(w)}) ${refAPA(w)}`).join('\n') || '(ninguna: no cites trabajos)';
     const reglas = 'Escribe en Markdown, con secciones (## ...): problema y justificación, objetivo e hipótesis, diseño (piloto y estudio completo), ablaciones, riesgos y ética, impacto esperado. Cita SOLO trabajos de la lista REFERENCIAS y SOLO con la forma exacta (Apellido, año). No escribas la lista de referencias al final: la añade el programa. No inventes datos ni resultados: es una propuesta.';
-    const datos = `LIMITACIONES: ${R.limit.map(l => l.texto).join(' | ')}\nIDEA ELEGIDA: ${b.titulo}\nDISEÑO: ${JSON.stringify(b.diseno)}\nABLACIONES: ${JSON.stringify(R.abl)}\nREFERENCIAS:\n${refsTx}`;
+    const datos = `LIMITACIONES: ${R.limit.map(l => l.texto).join(' | ')}\nIDEA ELEGIDA: ${b.titulo}\nDISEÑO: ${JSON.stringify(b.diseno)}\nABLACIONES: ${JSON.stringify(R.abl)}${R.reservas?.length ? `\nOBJECIONES DEL CRÍTICO SIN RESOLVER (decláralas con claridad en riesgos y limitaciones): ${R.reservas.join(' | ')}` : ''}\nREFERENCIAS:\n${refsTx}`;
     const d1 = await agente('Redactor', 'Redactas propuestas de investigación formales y precisas.', `${datos}\n\n${reglas}\n\nDevuelve {"propuesta":"texto en Markdown"}`, 4500);
     R.borrador = String(d1.propuesta || ''); R.final = R.borrador;
     const revisa = async txt => { const r = await agente('Revisor', 'Eres evaluador de una convocatoria competitiva. Puntúas de 1 a 10 por novedad, rigor, viabilidad e impacto. Eres exigente.', `PROPUESTA:\n${txt.slice(0, 14000)}\n\nDevuelve {"puntuacion":6,"resumen":"...","fortalezas":["..."],"debilidades":["..."]}`);
@@ -1840,7 +1850,7 @@ async function investiga() {
 $('btnInvestiga').onclick = investiga;
 
 /* ── pantalla 2: limitaciones e ideas ── */
-const DEC = {good: ['ok', 'aprobada'], bad: ['error', 'descartada'], engineer: ['aviso', 'ajustar'], pend: ['', 'sin diseñar']};
+const DEC = {good: ['ok', 'aprobada'], bad: ['error', 'no aprobada'], engineer: ['aviso', 'reformulada'], reservas: ['aviso', 'con reservas'], pend: ['', 'sin diseñar']};
 const obra = w => `<li><a href="${esc(w.url)}" target="_blank" rel="noopener">${esc(w.titulo)}</a> <small class="muted">· ${esc(w.autores || w.autor)} (${esc(w.anio)})${w.revista ? ' · ' + esc(w.revista) : ''}</small></li>`;
 function pintaIdeas() {
   const R = S.run; if (!R || !R.ideas.length) { $('ideas').innerHTML = `<div class="card"><p class="empty">${esc(t('Aún no hay ideas. Escribe tu pregunta en el paso anterior, o mira el ejemplo.'))}</p></div>`; return; }
@@ -1848,12 +1858,12 @@ function pintaIdeas() {
   const oa = R.oaFallo ? `<div class="aviso">${esc(t('No se pudo consultar OpenAlex para alguna idea: su novedad no se contrastó con publicaciones.'))}</div>` : '';
   const sel = R.ideas.find(i => i.id === R.elegida);
   $('ideas').innerHTML = `${ej}${oa}<div class="card"><h3>${esc(t('Limitaciones del estado del arte'))}</h3><ol class="fa-ul">${R.limit.map(l => `<li><b>${esc(l.texto)}</b><br><small class="muted">${esc(l.evidencia)}</small></li>`).join('')}</ol></div>
-    ${sel ? `<div class="okbox"><b>${esc(t('Idea elegida'))}:</b> ${esc(sel.titulo)}. ${esc(R.motivo)}</div>` : ''}
+    ${sel ? `<div class="${sel.estado === 'reservas' ? 'aviso' : 'okbox'}"><b>${esc(t('Idea elegida'))}:</b> ${esc(sel.titulo)}. ${esc(R.motivo)}</div>` : ''}
     ${R.ideas.map(it => { const d = DEC[it.estado] || DEC.pend; return `<div class="card fx-idea${it.id === R.elegida ? ' fx-sel' : ''}">
       <div class="fx-ih"><span class="fx-nov" title="${esc(t('Novedad'))}"><b>${it.novedad ?? '–'}</b>/10</span><div><h3 class="fx-t">${esc(it.titulo)}</h3><span class="fa-chip ${d[0]}">${esc(t(d[1]))}</span> <small class="muted">${esc(it.limitacion)}</small></div></div>
       <p>${esc(it.hipotesis)}</p>${it.justif ? `<p class="help"><b>${esc(t('Novedad'))}:</b> ${esc(it.justif)}</p>` : ''}
       ${it.cercanos?.length ? `<details><summary>${esc(t('Publicaciones más parecidas ({0})', it.cercanos.length))}</summary><ul class="fx-obras">${it.cercanos.map(obra).join('')}</ul></details>` : `<p class="help">${esc(t('No se encontraron publicaciones parecidas.'))}</p>`}
-      ${it.diseno ? `<details${it.id === R.elegida ? ' open' : ''}><summary>${esc(t('Diseño y crítica'))}</summary>${disenoHtml(it.diseno)}${(it.criticas || []).map((c, k) => `<p class="fx-crit"><span class="fa-chip ${DEC[c.decision][0]}">${esc(t('Crítico'))} ${k + 1}: ${esc(t(DEC[c.decision][1]))}</span> ${esc(c.feedback)}</p>`).join('')}</details>` : ''}
+      ${it.diseno ? `<details${it.id === R.elegida ? ' open' : ''}><summary>${esc(t('Diseño y crítica'))}</summary>${disenoHtml(it.diseno)}${(it.criticas || []).map((c, k) => `<p class="fx-crit"><span class="fa-chip ${(DEC[c.decision] || DEC.pend)[0]}">${esc(t('Crítico'))} ${k + 1}${c.puntuacion ? ` · ${c.puntuacion}/10` : ''}: ${esc(t((DEC[c.decision] || DEC.pend)[1]))}</span> ${esc(c.feedback)}${c.decision === 'engineer' && c.reformulacion ? `<br><b>${esc(t('Pregunta reformulada'))}:</b> ${esc(c.reformulacion)}` : ''}</p>`).join('')}</details>` : ''}
     </div>`; }).join('')}
     ${R.abl.length ? `<div class="card"><h3>${esc(t('Plan de ablaciones'))}</h3><div class="table-wrap"><table><thead><tr><th>${esc(t('Condición'))}</th><th>${esc(t('Qué se espera'))}</th><th>${esc(t('Medida'))}</th></tr></thead><tbody>${R.abl.map(a => `<tr><td><b>${esc(a.nombre)}</b></td><td>${esc(a.hipotesis)}</td><td>${esc(a.medida)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }

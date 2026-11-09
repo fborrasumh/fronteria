@@ -8,7 +8,7 @@
 
 1. identifica las limitaciones del estado del arte;
 2. propone ideas y contrasta su novedad con las publicaciones más parecidas de **OpenAlex**;
-3. diseña un piloto y un estudio completo para las dos ideas más novedosas, que pasan por un crítico metodológico;
+3. diseña un piloto y un estudio completo, empezando por la idea más novedosa. Un crítico metodológico lo puntúa; si no llega a 6/10, reformula la pregunta y dice qué cambiar, y el diseño se rehace (hasta 3 veces por idea). El proceso no se detiene: si ninguna idea se aprueba, sigue con la mejor puntuada «con reservas» y la propuesta declara las objeciones;
 4. planifica las ablaciones;
 5. redacta la propuesta y la somete a un revisor simulado; si la nota es menor que 7, la mejora y la vuelve a revisar.
 
@@ -21,7 +21,7 @@ Tres pasos en pantalla (pregunta → ideas → propuesta), un botón y ningún p
 - **La IA propone:** limitaciones, ideas, puntuación de novedad, diseños, críticas, ablaciones, la propuesta y la revisión.
 - **El código decide y comprueba:**
   - las publicaciones cercanas vienen de OpenAlex, no de la IA;
-  - la idea elegida es la más novedosa de las que aprueba el crítico;
+  - la aprobación la decide el código con la nota del crítico (6/10 o más), y la idea elegida es la más novedosa de las aprobadas;
   - cada cita de la propuesta, del tipo «(Apellido, año)» o «Apellido (año)», se busca entre esas publicaciones;
   - las citas que no aparecen se marcan con ⚠;
   - la bibliografía la escribe el código solo con las publicaciones encontradas.
@@ -39,7 +39,7 @@ Tres pasos en pantalla (pregunta → ideas → propuesta), un botón y ningún p
   - Antes, se enmascaran correos y teléfonos.
   - Antes del primer envío ves una muestra de lo que sale.
 - Hacia OpenAlex solo salen búsquedas breves en inglés.
-- Cada ejecución hace unas 10-16 consultas a la IA.
+- Cada ejecución hace unas 10-25 consultas a la IA (como máximo, 8 rondas de diseño y crítica).
 
 ## Límites
 
@@ -47,6 +47,10 @@ Tres pasos en pantalla (pregunta → ideas → propuesta), un botón y ningún p
 - No se ejecuta ningún experimento: los resultados de la propuesta son esperados.
 - El revisor es una IA. Su nota orienta, pero no certifica la calidad.
 - Si OpenAlex no responde, la app lo avisa y ninguna cita queda comprobada.
+
+## Novedades de la versión 2.1
+
+- El proceso ya no se detiene cuando el crítico no aprueba un diseño. El crítico reformula la pregunta y dice qué cambiar, el diseño se rehace, y si ninguna idea llega a aprobarse se sigue con la mejor puntuada y la propuesta declara las objeciones pendientes.
 
 ## Novedades de la versión 2.0
 
@@ -57,7 +61,7 @@ Tres pasos en pantalla (pregunta → ideas → propuesta), un botón y ningún p
 
 ## Cómo citar
 
-Borrás Rocher, F. (2026). *FronterIA* (versión 2.0.0) [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243
+Borrás Rocher, F. (2026). *FronterIA* (versión 2.1.0) [Software]. Universidad Miguel Hernández de Elche. https://doi.org/10.5281/zenodo.23003243
 
 El DOI es el de concepto: apunta siempre a la última versión. GitHub ofrece la cita en APA y BibTeX con el botón *Cite this repository*, a partir de `CITATION.cff`.
 
